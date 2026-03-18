@@ -227,7 +227,7 @@
       <div class="panel">
         <h1>Spectra Viewer</h1>
         <div class="muted">
-          Quick and easy interactive plotting of spectra. Multiple spectra supported, option for log plotting on each axis, and control of fonts and lines. Georgios Tsiminis 2026.
+          Quick and easy interactive plotting of spectra. Multiple spectra supported, option for log plotting on each axis, and control of fonts and lines. Georgios Tsiminis 2026..
         </div>
       </div>
 
@@ -271,12 +271,22 @@
             <label for="intensityCol">Intensity column</label>
             <select id="intensityCol"></select>
           </div>
+          <div>
+            <label for="xMin">X min trim</label>
+            <input id="xMin" type="number" step="any" />
+          </div>
+          <div>
+            <label for="xMax">X max trim</label>
+            <input id="xMax" type="number" step="any" />
+          </div>
         </div>
         <div class="inline-row" style="margin-top:10px;">
           <label class="checkbox-row"><input id="hasHeader" type="checkbox" /> First remaining line is header</label>
           <label class="checkbox-row"><input id="visible" type="checkbox" checked /> Show this trace</label>
         </div>
+        <div id="xRangeInfo" class="preview-meta" style="margin-top:10px;">X range: not available</div>
         <div class="inline-row" style="margin-top:10px;">
+          <button id="useFullRangeBtn" class="secondary" disabled>Use full X range</button>
           <button id="previewBtn" class="secondary" disabled>Preview columns</button>
           <button id="applySettingsBtn" disabled>Apply settings</button>
         </div>
@@ -359,6 +369,19 @@
             <label>&nbsp;</label>
             <label class="checkbox-row"><input id="logY" type="checkbox" /> Log Y-axis</label>
           </div>
+
+          <div>
+            <label>&nbsp;</label>
+            <label class="checkbox-row"><input id="useGlobalXTrim" type="checkbox" /> Apply one X trim to all traces</label>
+          </div>
+          <div>
+            <label for="globalXMin">Global X min</label>
+            <input id="globalXMin" type="number" step="any" />
+          </div>
+          <div>
+            <label for="globalXMax">Global X max</label>
+            <input id="globalXMax" type="number" step="any" />
+          </div>
         </div>
       </div>
 
@@ -388,6 +411,10 @@
       intensityCol: document.getElementById('intensityCol'),
       hasHeader: document.getElementById('hasHeader'),
       visible: document.getElementById('visible'),
+      xMin: document.getElementById('xMin'),
+      xMax: document.getElementById('xMax'),
+      xRangeInfo: document.getElementById('xRangeInfo'),
+      useFullRangeBtn: document.getElementById('useFullRangeBtn'),
       previewBtn: document.getElementById('previewBtn'),
       applySettingsBtn: document.getElementById('applySettingsBtn'),
       previewMeta: document.getElementById('previewMeta'),
@@ -408,6 +435,9 @@
       plot: document.getElementById('plot'),
       logX: document.getElementById('logX'),
       logY: document.getElementById('logY'),
+      useGlobalXTrim: document.getElementById('useGlobalXTrim'),
+      globalXMin: document.getElementById('globalXMin'),
+      globalXMax: document.getElementById('globalXMax'),
     };
 
     function setStatus(message) {
@@ -534,6 +564,26 @@
       };
     }
 
+    function trimXYToRange(x, y, xMin, xMax) {
+      const trimmedX = [];
+      const trimmedY = [];
+      for (let i = 0; i < x.length; i += 1) {
+        const xv = x[i];
+        const yv = y[i];
+        if (xMin !== null && xv < xMin) continue;
+        if (xMax !== null && xv > xMax) continue;
+        trimmedX.push(xv);
+        trimmedY.push(yv);
+      }
+      return { x: trimmedX, y: trimmedY };
+    }
+
+    function parseOptionalNumber(value) {
+      if (value === '' || value === null || value === undefined) return null;
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
     function normalise01(values) {
       if (!values.length) return [];
       const min = Math.min(...values);
@@ -617,6 +667,10 @@
         els.delimiter.value = 'Auto';
         els.hasHeader.checked = false;
         els.visible.checked = true;
+        els.xMin.value = '';
+        els.xMax.value = '';
+        els.xRangeInfo.textContent = 'X range: not available';
+        els.useFullRangeBtn.disabled = true;
         fillSelect(els.wavelengthCol, [], '');
         fillSelect(els.intensityCol, [], '');
         els.previewMeta.textContent = 'No file selected.';
@@ -633,6 +687,25 @@
       const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
       fillSelect(els.wavelengthCol, table.columns, file.wavelengthCol || table.columns[0] || '');
       fillSelect(els.intensityCol, table.columns, file.intensityCol || table.columns[1] || table.columns[0] || '');
+
+      const wavelengthCol = els.wavelengthCol.value || file.wavelengthCol || table.columns[0] || null;
+      const intensityCol = els.intensityCol.value || file.intensityCol || table.columns[1] || table.columns[0] || null;
+      const xy = wavelengthCol && intensityCol ? extractXY(table, wavelengthCol, intensityCol) : { x: [], y: [] };
+
+      if (xy.x.length) {
+        const fullXMin = Math.min(...xy.x);
+        const fullXMax = Math.max(...xy.x);
+        els.xRangeInfo.textContent = `X range available: ${fullXMin} to ${fullXMax}`;
+        els.useFullRangeBtn.disabled = false;
+        els.xMin.value = file.xMin ?? fullXMin;
+        els.xMax.value = file.xMax ?? fullXMax;
+      } else {
+        els.xMin.value = '';
+        els.xMax.value = '';
+        els.xRangeInfo.textContent = 'X range: not available';
+        els.useFullRangeBtn.disabled = true;
+      }
+
       updatePreview(table, file.name);
     }
 
@@ -652,8 +725,68 @@
 
       file.wavelengthCol = els.wavelengthCol.value || table.columns[0] || null;
       file.intensityCol = els.intensityCol.value || table.columns[1] || table.columns[0] || null;
+
+      const xy = file.wavelengthCol && file.intensityCol ? extractXY(table, file.wavelengthCol, file.intensityCol) : { x: [], y: [] };
+      if (xy.x.length) {
+        const fullXMin = Math.min(...xy.x);
+        const fullXMax = Math.max(...xy.x);
+        let xMin = els.xMin.value === '' ? null : Number(els.xMin.value);
+        let xMax = els.xMax.value === '' ? null : Number(els.xMax.value);
+
+        if (!Number.isFinite(xMin)) xMin = null;
+        if (!Number.isFinite(xMax)) xMax = null;
+        if (xMin !== null && xMin < fullXMin) xMin = fullXMin;
+        if (xMax !== null && xMax > fullXMax) xMax = fullXMax;
+        if (xMin !== null && xMax !== null && xMin > xMax) {
+          const temp = xMin;
+          xMin = xMax;
+          xMax = temp;
+        }
+
+        file.xMin = xMin;
+        file.xMax = xMax;
+        els.xMin.value = xMin ?? fullXMin;
+        els.xMax.value = xMax ?? fullXMax;
+        els.xRangeInfo.textContent = `X range available: ${fullXMin} to ${fullXMax}`;
+        els.useFullRangeBtn.disabled = false;
+      } else {
+        file.xMin = null;
+        file.xMax = null;
+        els.xMin.value = '';
+        els.xMax.value = '';
+        els.xRangeInfo.textContent = 'X range: not available';
+        els.useFullRangeBtn.disabled = true;
+      }
+
       updatePreview(table, file.name);
       refreshFileList();
+    }
+
+    function getCurrentFullXRange(file) {
+      if (!file) return null;
+      const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
+      if (table.columns.length < 2) return null;
+      const wavelengthCol = file.wavelengthCol || table.columns[0];
+      const intensityCol = file.intensityCol || table.columns[1] || table.columns[0];
+      const xy = extractXY(table, wavelengthCol, intensityCol);
+      if (!xy.x.length) return null;
+      return {
+        min: Math.min(...xy.x),
+        max: Math.max(...xy.x),
+      };
+    }
+
+    function seedGlobalTrimFromActiveFile() {
+      const file = getActiveFile();
+      if (!file) return;
+      const range = getCurrentFullXRange(file);
+      if (!range) return;
+
+      const seededMin = file.xMin ?? range.min;
+      const seededMax = file.xMax ?? range.max;
+
+      els.globalXMin.value = seededMin;
+      els.globalXMax.value = seededMax;
     }
 
     function plotAll() {
@@ -666,6 +799,14 @@
       const titleFontSize = Math.max(6, Number(els.titleFontSize.value || 16));
       const tickFontSize = Math.max(6, Number(els.tickFontSize.value || 10));
       const legendFontSize = Math.max(6, Number(els.legendFontSize.value || 10));
+      const useGlobalXTrim = els.useGlobalXTrim.checked;
+      let globalXMin = parseOptionalNumber(els.globalXMin.value);
+      let globalXMax = parseOptionalNumber(els.globalXMax.value);
+      if (globalXMin !== null && globalXMax !== null && globalXMin > globalXMax) {
+        const temp = globalXMin;
+        globalXMin = globalXMax;
+        globalXMax = temp;
+      }
 
       for (const file of state.files) {
         if (!file.visible) continue;
@@ -677,9 +818,14 @@
         const xy = extractXY(table, wavelengthCol, intensityCol);
         if (!xy.x.length) continue;
 
+        const trimMin = useGlobalXTrim ? globalXMin : (file.xMin ?? null);
+        const trimMax = useGlobalXTrim ? globalXMax : (file.xMax ?? null);
+        const trimmed = trimXYToRange(xy.x, xy.y, trimMin, trimMax);
+        if (!trimmed.x.length) continue;
+
         traces.push({
-          x: xy.x,
-          y: normalise ? normalise01(xy.y) : xy.y,
+          x: trimmed.x,
+          y: normalise ? normalise01(trimmed.y) : trimmed.y,
           mode: showMarkers ? 'lines+markers' : 'lines',
           name: file.traceName || file.name,
           line: { width: lineWidth },
@@ -732,7 +878,11 @@
       };
 
       Plotly.newPlot(els.plot, traces, layout, config);
-      setStatus(plotted ? `Plotted ${plotted} trace(s).` : 'No valid visible traces to plot.');
+      if (useGlobalXTrim && globalXMin === null && globalXMax === null) {
+        setStatus(plotted ? 'Global X trim is enabled, but no global min/max is set, so full ranges are being shown.' : 'No valid visible traces to plot.');
+      } else {
+        setStatus(plotted ? `Plotted ${plotted} trace(s).` : 'No valid visible traces to plot.');
+      }
     }
 
     function escapeHtml(value) {
@@ -763,6 +913,8 @@
           intensityCol: parsed.columns[1] || parsed.columns[0] || null,
           traceName: file.name.replace(/\.[^.]+$/, ''),
           visible: true,
+          xMin: null,
+          xMax: null,
         });
       }
 
@@ -787,7 +939,36 @@
       plotAll();
     });
 
+    els.useFullRangeBtn.addEventListener('click', () => {
+      const file = getActiveFile();
+      if (!file) return;
+      const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
+      const wavelengthCol = els.wavelengthCol.value || file.wavelengthCol || table.columns[0] || null;
+      const intensityCol = els.intensityCol.value || file.intensityCol || table.columns[1] || table.columns[0] || null;
+      const xy = wavelengthCol && intensityCol ? extractXY(table, wavelengthCol, intensityCol) : { x: [], y: [] };
+      if (!xy.x.length) return;
+      const fullXMin = Math.min(...xy.x);
+      const fullXMax = Math.max(...xy.x);
+      els.xMin.value = fullXMin;
+      els.xMax.value = fullXMax;
+      file.xMin = fullXMin;
+      file.xMax = fullXMax;
+      els.xRangeInfo.textContent = `X range available: ${fullXMin} to ${fullXMax}`;
+      plotAll();
+      setStatus('Full X range restored.');
+    });
+
     els.replotBtn.addEventListener('click', plotAll);
+    els.useGlobalXTrim.addEventListener('change', () => {
+      if (els.useGlobalXTrim.checked) {
+        const hasGlobalMin = parseOptionalNumber(els.globalXMin.value) !== null;
+        const hasGlobalMax = parseOptionalNumber(els.globalXMax.value) !== null;
+        if (!hasGlobalMin && !hasGlobalMax) {
+          seedGlobalTrimFromActiveFile();
+        }
+      }
+      plotAll();
+    });
     els.removeFileBtn.addEventListener('click', () => {
       if (state.activeIndex < 0) return;
       state.files.splice(state.activeIndex, 1);
@@ -820,9 +1001,11 @@
       els.showMarkers,
       els.logX,
       els.logY,
+      els.globalXMin,
+      els.globalXMax,
     ].forEach(el => {
       el.addEventListener('change', plotAll);
-      if (el.tagName === 'INPUT' && el.type === 'text') {
+      if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')) {
         el.addEventListener('input', plotAll);
       }
     });
