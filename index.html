@@ -350,6 +350,15 @@
             <label>&nbsp;</label>
             <button id="replotBtn">Replot</button>
           </div>
+
+          <div>
+            <label>&nbsp;</label>
+            <label class="checkbox-row"><input id="logX" type="checkbox" /> Log X-axis</label>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <label class="checkbox-row"><input id="logY" type="checkbox" /> Log Y-axis</label>
+          </div>
         </div>
       </div>
 
@@ -397,6 +406,8 @@
       replotBtn: document.getElementById('replotBtn'),
       statusBar: document.getElementById('statusBar'),
       plot: document.getElementById('plot'),
+      logX: document.getElementById('logX'),
+      logY: document.getElementById('logY'),
     };
 
     function setStatus(message) {
@@ -691,6 +702,7 @@
           },
           tickfont: { size: tickFontSize },
           zeroline: false,
+          type: els.logX.checked ? 'log' : 'linear',
         },
         yaxis: {
           title: {
@@ -699,6 +711,7 @@
           },
           tickfont: { size: tickFontSize },
           zeroline: false,
+          type: els.logY.checked ? 'log' : 'linear',
         },
         legend: {
           ...legend,
@@ -805,6 +818,8 @@
       els.legendFontSize,
       els.normalise,
       els.showMarkers,
+      els.logX,
+      els.logY,
     ].forEach(el => {
       el.addEventListener('change', plotAll);
       if (el.tagName === 'INPUT' && el.type === 'text') {
