@@ -227,7 +227,7 @@
       <div class="panel">
         <h1>Spectra Viewer</h1>
         <div class="muted">
-          Quick and easy interactive plotting of spectra. Multiple spectra supported, option for log plotting on each axis, and control of fonts and lines. Georgios Tsiminis 2026..
+          Quick and easy interactive plotting of spectra. Multiple spectra supported, option for log plotting on each axis, and control of fonts and lines, as well as high resolution export of graph. Georgios Tsiminis 2026.
         </div>
       </div>
 
@@ -369,7 +369,6 @@
             <label>&nbsp;</label>
             <label class="checkbox-row"><input id="logY" type="checkbox" /> Log Y-axis</label>
           </div>
-
           <div>
             <label>&nbsp;</label>
             <label class="checkbox-row"><input id="useGlobalXTrim" type="checkbox" /> Apply one X trim to all traces</label>
@@ -381,6 +380,30 @@
           <div>
             <label for="globalXMax">Global X max</label>
             <input id="globalXMax" type="number" step="any" />
+          </div>
+          <div>
+            <label for="aspectRatio">Aspect ratio</label>
+            <select id="aspectRatio">
+              <option value="free">free</option>
+              <option value="1:1">1:1</option>
+              <option value="4:3">4:3</option>
+              <option value="16:9" selected>16:9</option>
+              <option value="3:2">3:2</option>
+              <option value="21:9">21:9</option>
+            </select>
+          </div>
+          <div>
+            <label for="exportScale">High-res export scale</label>
+            <select id="exportScale">
+              <option value="1">1x</option>
+              <option value="2" selected>2x</option>
+              <option value="3">3x</option>
+              <option value="4">4x</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="savePlotBtn" class="secondary">Save plot PNG</button>
           </div>
         </div>
       </div>
@@ -438,6 +461,9 @@
       useGlobalXTrim: document.getElementById('useGlobalXTrim'),
       globalXMin: document.getElementById('globalXMin'),
       globalXMax: document.getElementById('globalXMax'),
+      aspectRatio: document.getElementById('aspectRatio'),
+      exportScale: document.getElementById('exportScale'),
+      savePlotBtn: document.getElementById('savePlotBtn'),
     };
 
     function setStatus(message) {
@@ -602,6 +628,16 @@
         case 'right': return { x: 1.02, y: 0.5, xanchor: 'left', yanchor: 'middle' };
         default: return { x: 1, y: 1, xanchor: 'right', yanchor: 'top' };
       }
+    }
+
+    function getAspectDimensions(aspectRatio) {
+      const baseWidth = 1200;
+      if (aspectRatio === '1:1') return { width: baseWidth, height: 1200 };
+      if (aspectRatio === '4:3') return { width: baseWidth, height: 900 };
+      if (aspectRatio === '16:9') return { width: baseWidth, height: 675 };
+      if (aspectRatio === '3:2') return { width: baseWidth, height: 800 };
+      if (aspectRatio === '21:9') return { width: baseWidth, height: 514 };
+      return { width: null, height: null };
     }
 
     function getActiveFile() {
@@ -836,6 +872,7 @@
       }
 
       const legend = legendLayout(els.legendPosition.value);
+      const aspect = getAspectDimensions(els.aspectRatio.value);
       const layout = {
         title: {
           text: els.plotTitle.value || 'Spectra viewer',
@@ -871,10 +908,21 @@
         hovermode: 'closest',
       };
 
+      if (aspect.width && aspect.height) {
+        layout.width = aspect.width;
+        layout.height = aspect.height;
+      }
+
+      const exportScale = Math.max(1, Number(els.exportScale.value || 2));
       const config = {
         responsive: true,
         scrollZoom: true,
         displaylogo: false,
+        toImageButtonOptions: {
+          format: 'png',
+          filename: (els.plotTitle.value || 'spectra_viewer').trim().replace(/\s+/g, '_') || 'spectra_viewer',
+          scale: exportScale,
+        },
       };
 
       Plotly.newPlot(els.plot, traces, layout, config);
@@ -987,6 +1035,22 @@
       plotAll();
     });
 
+    els.savePlotBtn.addEventListener('click', async () => {
+      const exportScale = Math.max(1, Number(els.exportScale.value || 2));
+      const filename = (els.plotTitle.value || 'spectra_viewer').trim().replace(/\s+/g, '_') || 'spectra_viewer';
+      try {
+        await Plotly.downloadImage(els.plot, {
+          format: 'png',
+          filename,
+          scale: exportScale,
+        });
+        setStatus(`Saved plot as PNG (${exportScale}x scale).`);
+      } catch (error) {
+        setStatus('Failed to save plot image.');
+        console.error(error);
+      }
+    });
+
     [
       els.plotTitle,
       els.xAxisLabel,
@@ -1003,6 +1067,8 @@
       els.logY,
       els.globalXMin,
       els.globalXMax,
+      els.aspectRatio,
+      els.exportScale,
     ].forEach(el => {
       el.addEventListener('change', plotAll);
       if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')) {
@@ -1010,11 +1076,25 @@
       }
     });
 
-    Plotly.newPlot(els.plot, [], {
+    const initialAspect = getAspectDimensions(els.aspectRatio.value);
+    const initialLayout = {
       title: { text: 'Spectra viewer' },
       template: 'plotly_white',
       margin: { l: 70, r: 40, t: 70, b: 70 },
-    }, { responsive: true, displaylogo: false });
+    };
+    if (initialAspect.width && initialAspect.height) {
+      initialLayout.width = initialAspect.width;
+      initialLayout.height = initialAspect.height;
+    }
+    Plotly.newPlot(els.plot, [], initialLayout, {
+      responsive: true,
+      displaylogo: false,
+      toImageButtonOptions: {
+        format: 'png',
+        filename: 'spectra_viewer',
+        scale: Math.max(1, Number(els.exportScale.value || 2)),
+      },
+    });
   </script>
 </body>
 </html>
