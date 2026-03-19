@@ -246,7 +246,7 @@
         <h2>Selected file settings</h2>
         <div class="controls-grid">
           <div style="grid-column: 1 / -1;">
-            <label for="traceName">Trace name</label>
+            <label for="traceName">Legend entry / trace name</label>
             <input id="traceName" type="text" />
           </div>
           <div>
@@ -323,6 +323,8 @@
               <option value="bottom right">bottom right</option>
               <option value="bottom left">bottom left</option>
               <option value="right">right</option>
+              <option value="middle left">middle left</option>
+              <option value="middle right">middle right</option>
               <option value="left">left</option>
             </select>
           </div>
@@ -358,6 +360,10 @@
           </div>
           <div>
             <label>&nbsp;</label>
+            <label class="checkbox-row"><input id="showFrame" type="checkbox" /> Show frame around graph</label>
+          </div>
+          <div>
+            <label>&nbsp;</label>
             <button id="replotBtn">Replot</button>
           </div>
 
@@ -384,10 +390,10 @@
           <div>
             <label for="aspectRatio">Aspect ratio</label>
             <select id="aspectRatio">
-              <option value="free">free</option>
+              <option value="free" selected>free</option>
               <option value="1:1">1:1</option>
               <option value="4:3">4:3</option>
-              <option value="16:9" selected>16:9</option>
+              <option value="16:9">16:9</option>
               <option value="3:2">3:2</option>
               <option value="21:9">21:9</option>
             </select>
@@ -453,6 +459,7 @@
       legendFontSize: document.getElementById('legendFontSize'),
       normalise: document.getElementById('normalise'),
       showMarkers: document.getElementById('showMarkers'),
+      showFrame: document.getElementById('showFrame'),
       replotBtn: document.getElementById('replotBtn'),
       statusBar: document.getElementById('statusBar'),
       plot: document.getElementById('plot'),
@@ -626,6 +633,8 @@
         case 'bottom right': return { x: 1, y: 0, xanchor: 'right', yanchor: 'bottom' };
         case 'left': return { x: -0.02, y: 0.5, xanchor: 'right', yanchor: 'middle' };
         case 'right': return { x: 1.02, y: 0.5, xanchor: 'left', yanchor: 'middle' };
+        case 'middle left': return { x: 0, y: 0.5, xanchor: 'left', yanchor: 'middle' };
+        case 'middle right': return { x: 1, y: 0.5, xanchor: 'right', yanchor: 'middle' };
         default: return { x: 1, y: 1, xanchor: 'right', yanchor: 'top' };
       }
     }
@@ -825,9 +834,21 @@
       els.globalXMax.value = seededMax;
     }
 
+    function getExpandedLinearRange(minVal, maxVal) {
+      if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return null;
+      if (minVal === maxVal) {
+        return [minVal - 1, maxVal + 1];
+      }
+      const span = maxVal - minVal;
+      const pad = Math.max(1, span * 0.01);
+      return [minVal - pad, maxVal + pad];
+    }
+
     function plotAll() {
       const traces = [];
       let plotted = 0;
+      let plottedXMin = null;
+      let plottedXMax = null;
       const normalise = els.normalise.checked;
       const showMarkers = els.showMarkers.checked;
       const lineWidth = Math.max(1, Number(els.lineWidth.value || 2));
@@ -835,6 +856,7 @@
       const titleFontSize = Math.max(6, Number(els.titleFontSize.value || 16));
       const tickFontSize = Math.max(6, Number(els.tickFontSize.value || 10));
       const legendFontSize = Math.max(6, Number(els.legendFontSize.value || 10));
+      const showFrame = els.showFrame.checked;
       const useGlobalXTrim = els.useGlobalXTrim.checked;
       let globalXMin = parseOptionalNumber(els.globalXMin.value);
       let globalXMax = parseOptionalNumber(els.globalXMax.value);
@@ -858,6 +880,11 @@
         const trimMax = useGlobalXTrim ? globalXMax : (file.xMax ?? null);
         const trimmed = trimXYToRange(xy.x, xy.y, trimMin, trimMax);
         if (!trimmed.x.length) continue;
+
+        const traceXMin = Math.min(...trimmed.x);
+        const traceXMax = Math.max(...trimmed.x);
+        plottedXMin = plottedXMin === null ? traceXMin : Math.min(plottedXMin, traceXMin);
+        plottedXMax = plottedXMax === null ? traceXMax : Math.max(plottedXMax, traceXMax);
 
         traces.push({
           x: trimmed.x,
@@ -886,6 +913,11 @@
           tickfont: { size: tickFontSize },
           zeroline: false,
           type: els.logX.checked ? 'log' : 'linear',
+          showline: true,
+          linecolor: '#000000',
+          linewidth: 1,
+          mirror: showFrame ? 'allticks' : false,
+          ticks: 'outside',
         },
         yaxis: {
           title: {
@@ -895,6 +927,11 @@
           tickfont: { size: tickFontSize },
           zeroline: false,
           type: els.logY.checked ? 'log' : 'linear',
+          showline: true,
+          linecolor: '#000000',
+          linewidth: 1,
+          mirror: showFrame ? 'allticks' : false,
+          ticks: 'outside',
         },
         legend: {
           ...legend,
@@ -911,6 +948,13 @@
       if (aspect.width && aspect.height) {
         layout.width = aspect.width;
         layout.height = aspect.height;
+      }
+
+      if (!els.logX.checked && plottedXMin !== null && plottedXMax !== null) {
+        const expandedRange = getExpandedLinearRange(plottedXMin, plottedXMax);
+        if (expandedRange) {
+          layout.xaxis.range = expandedRange;
+        }
       }
 
       const exportScale = Math.max(1, Number(els.exportScale.value || 2));
@@ -1063,6 +1107,7 @@
       els.legendFontSize,
       els.normalise,
       els.showMarkers,
+      els.showFrame,
       els.logX,
       els.logY,
       els.globalXMin,
