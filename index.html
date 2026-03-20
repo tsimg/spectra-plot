@@ -5,1141 +5,1199 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Spectra Viewer</title>
   <script src="https://cdn.plot.ly/plotly-3.4.0.min.js" charset="utf-8"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #f5f7fb;
-      --panel: #ffffff;
-      --border: #d8dee9;
-      --text: #1f2937;
-      --muted: #6b7280;
-      --accent: #2563eb;
+      --radius: 6px;
+      --font: 'IBM Plex Sans', sans-serif;
+      --mono: 'IBM Plex Mono', monospace;
+      --accent: #4f8ef7;
+      --accent-glow: rgba(79,142,247,0.13);
+      --amber: #f5a623;
+    }
+    :root, [data-theme="dark"] {
+      --bg: #0f1117; --surface: #181c27; --surface2: #1e2330;
+      --border: #2a2f3d; --border-hi: #3d4560;
+      --text: #e2e6f0; --muted: #7a829a;
+      --plot-paper: #181c27; --plot-bg: #0f1117;
+      --plot-grid: #1e2330; --plot-line: #2a2f3d;
+      --plot-font: #e2e6f0; --plot-muted: #3d4560;
+      --plot-legend-bg: rgba(24,28,39,0.88);
+    }
+    [data-theme="light"] {
+      --bg: #f4f6fa; --surface: #ffffff; --surface2: #f0f2f7;
+      --border: #dde1ea; --border-hi: #b8bfd0;
+      --text: #1a1f2e; --muted: #6b7280;
+      --plot-paper: #ffffff; --plot-bg: #ffffff;
+      --plot-grid: #eef0f5; --plot-line: #dde1ea;
+      --plot-font: #1a1f2e; --plot-muted: #b8bfd0;
+      --plot-legend-bg: rgba(255,255,255,0.92);
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      color: var(--text);
-      background: var(--bg);
+      font-family: var(--font); background: var(--bg); color: var(--text);
+      height: 100vh; overflow: hidden; display: flex; flex-direction: column;
     }
 
-    .app {
-      display: grid;
-      grid-template-columns: 390px 1fr;
-      gap: 12px;
-      padding: 12px;
-      min-height: 100vh;
+    /* ── Topbar ── */
+    .topbar {
+      height: 42px; flex-shrink: 0;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 12px; gap: 8px;
     }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    .topbar-logo {
+      font-family: var(--mono); font-size: 12px; font-weight: 500;
+      color: var(--accent); letter-spacing: 0.05em; white-space: nowrap;
     }
+    .topbar-sep { width: 1px; height: 18px; background: var(--border); flex-shrink: 0; }
+    .topbar-status {
+      font-size: 12px; color: var(--muted); flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .topbar-btn {
+      height: 26px; padding: 0 10px; border-radius: var(--radius);
+      border: 1px solid var(--border-hi); background: var(--surface2);
+      color: var(--text); font-family: var(--font); font-size: 12px;
+      cursor: pointer; white-space: nowrap;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .topbar-btn:hover { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+    .topbar-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .topbar-btn.primary:hover { background: #6ba3ff; color: #fff; }
 
+    /* ── Workspace ── */
+    .workspace { display: flex; flex: 1; min-height: 0; position: relative; }
+
+    /* ── Sidebar ── */
     .sidebar {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-width: 0;
+      width: 280px; min-width: 200px; max-width: 480px;
+      flex-shrink: 0; display: flex; flex-direction: column;
+      border-right: 1px solid var(--border); background: var(--surface);
+      overflow: visible; position: relative;
+    }
+    .sidebar.collapsed { width: 0 !important; min-width: 0; border-right: none; overflow: hidden; }
+    .sidebar.collapsed .tab-bar,
+    .sidebar.collapsed .tab-panel { opacity: 0; pointer-events: none; }
+
+    /* Resize handle */
+    .resize-handle {
+      position: absolute; top: 0; right: -4px; width: 8px; height: 100%;
+      cursor: col-resize; z-index: 10;
+    }
+    .resize-handle::after {
+      content: ''; position: absolute; top: 0; left: 3px;
+      width: 2px; height: 100%; background: transparent; transition: background 0.15s;
+    }
+    .resize-handle:hover::after, .resize-handle.active::after { background: var(--accent); }
+
+    /* Collapse toggle */
+    .collapse-btn {
+      position: absolute; top: 50%; right: -13px; transform: translateY(-50%);
+      width: 13px; height: 36px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-left: none; border-radius: 0 4px 4px 0;
+      cursor: pointer; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 9px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .collapse-btn:hover { background: var(--accent-glow); color: var(--accent); }
+    .sidebar.collapsed .collapse-btn {
+      right: -14px; border-left: 1px solid var(--border); border-radius: 4px;
     }
 
-    .main {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-width: 0;
+    /* ── Tabs ── */
+    .tab-bar {
+      display: flex; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
     }
-
-    h1, h2, h3 {
-      margin: 0 0 10px 0;
-      font-weight: 600;
+    .tab-btn {
+      flex: 1; height: 34px; border: none; background: none;
+      font-family: var(--font); font-size: 11px; font-weight: 600;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--muted); cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
     }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-    h1 { font-size: 22px; }
-    h2 { font-size: 16px; }
-    h3 { font-size: 14px; }
+    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
+    .tab-panel.active { display: flex; }
+    .tab-scroll { flex: 1; overflow-y: auto; padding: 10px 12px; }
 
-    .muted {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.4;
+    /* ── Sidebar collapsible sections ── */
+    .sb-sec { border-bottom: 1px solid var(--border); }
+    .sb-sec:last-child { border-bottom: none; }
+    .sb-sec-hdr {
+      height: 30px; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--muted); cursor: pointer; user-select: none;
     }
+    .sb-sec-hdr:hover { color: var(--text); }
+    .sb-sec-hdr .chev { font-size: 9px; transition: transform 0.18s; }
+    .sb-sec.closed .chev { transform: rotate(-90deg); }
+    .sb-sec.closed .sb-sec-body { display: none; }
+    .sb-sec-body { padding-bottom: 10px; }
 
-    .controls-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      align-items: end;
+    /* ── Form ── */
+    .form-row { margin-bottom: 8px; }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-row > label {
+      display: block; font-size: 10px; font-weight: 600;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 3px;
     }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-    .controls-grid-4 {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      align-items: end;
+    input[type="text"], input[type="number"], select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0 8px; height: 28px;
+      font-family: var(--font); font-size: 12px; color: var(--text); outline: none;
+      transition: border-color 0.15s;
     }
-
-    label {
-      display: block;
-      font-size: 12px;
-      margin-bottom: 4px;
-      color: var(--muted);
-    }
-
-    input[type="text"],
-    input[type="number"],
-    select,
+    input:focus, select:focus { border-color: var(--accent); }
+    select option { background: var(--surface2); }
     textarea {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 14px;
-      background: white;
-      color: var(--text);
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 6px 8px;
+      font-family: var(--mono); font-size: 11px; line-height: 1.5;
+      color: var(--text); outline: none; resize: none;
+      transition: border-color 0.15s;
     }
+    textarea:focus { border-color: var(--accent); }
 
-    input[type="file"] {
-      width: 100%;
-      font-size: 14px;
+    .check-row {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12px; color: var(--text); cursor: pointer; margin-bottom: 5px;
     }
+    .check-row:last-child { margin-bottom: 0; }
+    .check-row input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
 
-    textarea {
-      min-height: 180px;
-      resize: vertical;
-      font-family: Consolas, Monaco, monospace;
-      font-size: 12px;
+    /* Toggle buttons */
+    .tog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .tog {
+      height: 26px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-family: var(--font);
+      font-size: 11px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
     }
+    .tog:hover { border-color: var(--border-hi); color: var(--text); }
+    .tog.on { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 
-    button {
-      border: 1px solid var(--accent);
-      background: var(--accent);
-      color: white;
-      padding: 9px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    button.secondary {
-      background: white;
-      color: var(--accent);
-    }
-
-    button:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-
-    .file-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: 260px;
-      overflow: auto;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 6px;
-      background: #fafbfd;
-    }
-
+    /* File list */
+    .file-list { display: flex; flex-direction: column; gap: 4px; }
     .file-item {
-      border: 1px solid var(--border);
-      background: white;
-      border-radius: 8px;
-      padding: 8px;
-      cursor: pointer;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 6px 8px; cursor: pointer; display: flex; align-items: flex-start; gap: 6px;
+      transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+      user-select: none;
+    }
+    .file-item:hover { border-color: var(--border-hi); background: var(--surface2); }
+    .file-item.active { border-color: var(--accent); background: var(--accent-glow); }
+    .file-item.dragging { opacity: 0.35; }
+    .file-item.drag-over-top { border-top: 2px solid var(--accent); }
+    .file-item.drag-over-bottom { border-bottom: 2px solid var(--accent); }
+
+    /* Drag handle */
+    .drag-handle {
+      flex-shrink: 0; width: 14px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 2px;
+      padding-top: 3px; cursor: grab; opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .file-item:hover .drag-handle { opacity: 1; }
+    .drag-handle span {
+      display: block; width: 10px; height: 1.5px;
+      background: var(--muted); border-radius: 1px;
+    }
+    .file-item-content { flex: 1; min-width: 0; }
+    .file-item-name {
+      font-size: 12px; font-weight: 500; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-item-sub { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+
+    /* Inline trace-name editor */
+    .file-item-trace {
+      font-size: 11px; font-weight: 500; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: text; padding: 1px 2px; border-radius: 3px;
+      transition: color 0.12s;
+    }
+    .file-item-trace:hover { color: var(--accent); }
+    .trace-name-edit {
+      width: 100%; background: var(--bg); border: 1px solid var(--accent);
+      border-radius: 3px; padding: 1px 5px; height: 20px; margin-top: 1px;
+      font-family: var(--font); font-size: 11px; font-weight: 500;
+      color: var(--text); outline: none;
+    }
+    .file-item-hint { font-size: 10px; color: var(--muted); margin-top: 1px; opacity: 0; transition: opacity 0.15s; }
+    .file-item:hover .file-item-hint { opacity: 1; }
+
+    /* Attribution footer */
+    .sidebar-footer {
+      flex-shrink: 0; padding: 6px 12px;
+      border-top: 1px solid var(--border);
+      font-size: 10px; color: var(--muted);
+      font-family: var(--mono); letter-spacing: 0.03em;
     }
 
-    .file-item.active {
-      border-color: var(--accent);
-      box-shadow: inset 0 0 0 1px var(--accent);
+    .drop-zone {
+      border: 1px dashed var(--border-hi); border-radius: var(--radius);
+      padding: 50px 10px; text-align: center; font-size: 12px; color: var(--muted);
+      cursor: pointer; margin-bottom: 8px; display: block;
+      transition: border-color 0.15s, color 0.15s;
     }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); color: var(--accent); }
+    .drop-zone input { display: none; }
 
-    .file-item-title {
-      font-size: 14px;
-      font-weight: 600;
-      word-break: break-word;
+    /* Sidebar buttons */
+    .btn-row { display: flex; gap: 6px; margin-top: 8px; }
+    .sb-btn {
+      flex: 1; height: 26px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text); font-family: var(--font); font-size: 11px;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
+    .sb-btn:hover { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+    .sb-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .sb-btn.primary:hover { background: #6ba3ff; color: #fff; }
+    .sb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .sb-btn:disabled:hover { border-color: var(--border); background: var(--surface2); color: var(--text); }
 
-    .file-item-sub {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 4px;
-    }
+    .range-info { font-family: var(--mono); font-size: 10px; color: var(--muted); margin: 4px 0 8px; }
+    .preview-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 5px; }
 
-    .inline-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
+    /* ── Plot area ── */
+    .plot-area { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .plot-wrap { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+    .plot-wrap.has-ratio {
+      flex: none; align-self: flex-start; width: 100%;
+      max-height: calc(100vh - 42px);
     }
+    #plot { width: 100%; height: 100%; position: absolute; inset: 0; }
 
-    .checkbox-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 14px;
-    }
-
-    .plot-wrap {
-      min-height: 680px;
-      display: flex;
-      flex-direction: column;
-    }
-
-    #plot {
-      width: 100%;
-      min-height: 680px;
-    }
-
-    .status {
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .preview-meta {
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 8px;
-    }
-
-    .hidden-note {
-      color: #b45309;
-    }
-
-    @media (max-width: 1100px) {
-      .app {
-        grid-template-columns: 1fr;
-      }
-      .controls-grid-4 {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
   </style>
 </head>
 <body>
-  <div class="app">
-    <div class="sidebar">
-      <div class="panel">
-        <h1>Spectra Viewer</h1>
-        <div class="muted">
-          Quick and easy interactive plotting of spectra. Multiple spectra supported, option for log plotting on each axis, and control of fonts and lines, as well as high resolution export of graph. Georgios Tsiminis 2026.
-        </div>
-      </div>
 
-      <div class="panel">
-        <h2>Files</h2>
-        <label for="fileInput">Add spectra files</label>
-        <input id="fileInput" type="file" multiple accept=".txt,.csv,.tsv,.dat,text/plain" />
-        <div class="inline-row" style="margin-top:10px;">
-          <button id="removeFileBtn" class="secondary" disabled>Remove selected</button>
-          <button id="clearFilesBtn" class="secondary" disabled>Clear all</button>
-        </div>
-        <div id="fileList" class="file-list" style="margin-top:10px;"></div>
-      </div>
+<div class="topbar">
+  <span class="topbar-logo">SPECTRA VIEWER</span>
+  <div class="topbar-sep"></div>
+  <span class="topbar-status" id="statusBar">Ready. Add files in the Files tab to begin.</span>
+  <button class="topbar-btn" id="themeToggleBtn">☀ Light</button>
+  <button class="topbar-btn" id="replotBtn">↺ Replot</button>
+  <button class="topbar-btn primary" id="savePlotBtn">↓ Save PNG</button>
+</div>
 
-      <div class="panel">
-        <h2>Selected file settings</h2>
-        <div class="controls-grid">
-          <div style="grid-column: 1 / -1;">
-            <label for="traceName">Legend entry / trace name</label>
-            <input id="traceName" type="text" />
-          </div>
-          <div>
-            <label for="skipRows">Trim first N lines</label>
-            <input id="skipRows" type="number" min="0" step="1" />
-          </div>
-          <div>
-            <label for="delimiter">Delimiter</label>
-            <select id="delimiter">
-              <option>Auto</option>
-              <option>Tab</option>
-              <option>Comma</option>
-              <option>Semicolon</option>
-              <option>Whitespace</option>
-            </select>
-          </div>
-          <div>
-            <label for="wavelengthCol">Wavelength column</label>
-            <select id="wavelengthCol"></select>
-          </div>
-          <div>
-            <label for="intensityCol">Intensity column</label>
-            <select id="intensityCol"></select>
-          </div>
-          <div>
-            <label for="xMin">X min trim</label>
-            <input id="xMin" type="number" step="any" />
-          </div>
-          <div>
-            <label for="xMax">X max trim</label>
-            <input id="xMax" type="number" step="any" />
-          </div>
-        </div>
-        <div class="inline-row" style="margin-top:10px;">
-          <label class="checkbox-row"><input id="hasHeader" type="checkbox" /> First remaining line is header</label>
-          <label class="checkbox-row"><input id="visible" type="checkbox" checked /> Show this trace</label>
-        </div>
-        <div id="xRangeInfo" class="preview-meta" style="margin-top:10px;">X range: not available</div>
-        <div class="inline-row" style="margin-top:10px;">
-          <button id="useFullRangeBtn" class="secondary" disabled>Use full X range</button>
-          <button id="previewBtn" class="secondary" disabled>Preview columns</button>
-          <button id="applySettingsBtn" disabled>Apply settings</button>
-        </div>
-      </div>
+<div class="workspace">
 
-      <div class="panel">
-        <h2>Preview</h2>
-        <div id="previewMeta" class="preview-meta">No file selected.</div>
-        <textarea id="previewBox" readonly></textarea>
+  <!-- ── Sidebar ── -->
+  <div class="sidebar" id="sidebar">
+    <div class="resize-handle" id="resizeHandle"></div>
+    <button class="collapse-btn" id="collapseBtn" title="Toggle sidebar">‹</button>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="tab-files">Files</button>
+      <button class="tab-btn" data-tab="tab-plot">Plot options</button>
+    </div>
+
+    <!-- FILES tab -->
+    <div class="tab-panel active" id="tab-files">
+      <div class="tab-scroll">
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-load">Load files <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <label class="drop-zone" id="dropZone">
+              Click or drag files here
+              <input id="fileInput" type="file" multiple accept=".txt,.csv,.tsv,.dat,text/plain" />
+            </label>
+            <div id="fileList" class="file-list"></div>
+            <div class="btn-row">
+              <button class="sb-btn" id="removeFileBtn" disabled>Remove</button>
+              <button class="sb-btn" id="clearFilesBtn" disabled>Clear all</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-settings">File settings <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="form-row">
+              <label>Trace name</label>
+              <input id="traceName" type="text" />
+            </div>
+            <div class="grid2">
+              <div class="form-row">
+                <label>Skip N lines</label>
+                <input id="skipRows" type="number" min="0" step="1" />
+              </div>
+              <div class="form-row">
+                <label>Delimiter</label>
+                <select id="delimiter">
+                  <option>Auto</option><option>Tab</option>
+                  <option>Comma</option><option>Semicolon</option><option>Whitespace</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>X column</label>
+                <select id="wavelengthCol"></select>
+              </div>
+              <div class="form-row">
+                <label>Y column</label>
+                <select id="intensityCol"></select>
+              </div>
+              <div class="form-row">
+                <label>X min trim</label>
+                <input id="xMin" type="number" step="any" />
+              </div>
+              <div class="form-row">
+                <label>X max trim</label>
+                <input id="xMax" type="number" step="any" />
+              </div>
+            </div>
+            <div class="range-info" id="xRangeInfo">Full range: —</div>
+            <label class="check-row"><input id="hasHeader" type="checkbox" /> First remaining line is header</label>
+            <label class="check-row"><input id="visible" type="checkbox" checked /> Show this trace</label>
+            <div class="btn-row">
+              <button class="sb-btn" id="useFullRangeBtn" disabled>Full range</button>
+              <button class="sb-btn" id="previewBtn" disabled>Preview</button>
+              <button class="sb-btn primary" id="applySettingsBtn" disabled>Apply</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-preview">Data preview <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="preview-meta" id="previewMeta">No file selected.</div>
+            <textarea id="previewBox" readonly rows="10"></textarea>
+          </div>
+        </div>
+
       </div>
     </div>
 
-    <div class="main">
-      <div class="panel">
-        <h2>Global plot options</h2>
-        <div class="controls-grid-4">
-          <div>
-            <label for="plotTitle">Plot title</label>
-            <input id="plotTitle" type="text" value="Spectra viewer" />
-          </div>
-          <div>
-            <label for="xAxisLabel">X-axis label</label>
-            <input id="xAxisLabel" type="text" value="Wavelength" />
-          </div>
-          <div>
-            <label for="yAxisLabel">Y-axis label</label>
-            <input id="yAxisLabel" type="text" value="Intensity" />
-          </div>
-          <div>
-            <label for="legendPosition">Legend position</label>
-            <select id="legendPosition">
-              <option value="top right">top right</option>
-              <option value="top left">top left</option>
-              <option value="bottom right">bottom right</option>
-              <option value="bottom left">bottom left</option>
-              <option value="right">right</option>
-              <option value="middle left">middle left</option>
-              <option value="middle right">middle right</option>
-              <option value="left">left</option>
-            </select>
-          </div>
+    <!-- PLOT OPTIONS tab -->
+    <div class="tab-panel" id="tab-plot">
+      <div class="tab-scroll">
 
-          <div>
-            <label for="lineWidth">Line width</label>
-            <input id="lineWidth" type="number" min="1" max="8" step="1" value="2" />
-          </div>
-          <div>
-            <label for="axisFontSize">Axis font size</label>
-            <input id="axisFontSize" type="number" min="6" max="40" step="1" value="12" />
-          </div>
-          <div>
-            <label for="titleFontSize">Title font size</label>
-            <input id="titleFontSize" type="number" min="6" max="50" step="1" value="16" />
-          </div>
-          <div>
-            <label for="tickFontSize">Tick font size</label>
-            <input id="tickFontSize" type="number" min="6" max="40" step="1" value="10" />
-          </div>
-
-          <div>
-            <label for="legendFontSize">Legend font size</label>
-            <input id="legendFontSize" type="number" min="6" max="40" step="1" value="10" />
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <label class="checkbox-row"><input id="normalise" type="checkbox" /> Normalise all traces to 0-1</label>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <label class="checkbox-row"><input id="showMarkers" type="checkbox" /> Show markers</label>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <label class="checkbox-row"><input id="showFrame" type="checkbox" /> Show frame around graph</label>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <button id="replotBtn">Replot</button>
-          </div>
-
-          <div>
-            <label>&nbsp;</label>
-            <label class="checkbox-row"><input id="logX" type="checkbox" /> Log X-axis</label>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <label class="checkbox-row"><input id="logY" type="checkbox" /> Log Y-axis</label>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <label class="checkbox-row"><input id="useGlobalXTrim" type="checkbox" /> Apply one X trim to all traces</label>
-          </div>
-          <div>
-            <label for="globalXMin">Global X min</label>
-            <input id="globalXMin" type="number" step="any" />
-          </div>
-          <div>
-            <label for="globalXMax">Global X max</label>
-            <input id="globalXMax" type="number" step="any" />
-          </div>
-          <div>
-            <label for="aspectRatio">Aspect ratio</label>
-            <select id="aspectRatio">
-              <option value="free" selected>free</option>
-              <option value="1:1">1:1</option>
-              <option value="4:3">4:3</option>
-              <option value="16:9">16:9</option>
-              <option value="3:2">3:2</option>
-              <option value="21:9">21:9</option>
-            </select>
-          </div>
-          <div>
-            <label for="exportScale">High-res export scale</label>
-            <select id="exportScale">
-              <option value="1">1x</option>
-              <option value="2" selected>2x</option>
-              <option value="3">3x</option>
-              <option value="4">4x</option>
-            </select>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <button id="savePlotBtn" class="secondary">Save plot PNG</button>
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-labels">Labels <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="form-row"><label>Plot title</label><input id="plotTitle" type="text" value="Spectra viewer" /></div>
+            <div class="form-row"><label>X-axis label</label><input id="xAxisLabel" type="text" value="Wavelength" /></div>
+            <div class="form-row"><label>Y-axis label</label><input id="yAxisLabel" type="text" value="Intensity" /></div>
           </div>
         </div>
-      </div>
 
-      <div class="panel plot-wrap">
-        <div id="plot"></div>
-      </div>
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-fonts">Font sizes <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="grid2">
+              <div class="form-row"><label>Title</label><input id="titleFontSize" type="number" min="6" max="50" value="15" /></div>
+              <div class="form-row"><label>Axis labels</label><input id="axisFontSize" type="number" min="6" max="40" value="12" /></div>
+              <div class="form-row"><label>Tick labels</label><input id="tickFontSize" type="number" min="6" max="40" value="11" /></div>
+              <div class="form-row"><label>Legend</label><input id="legendFontSize" type="number" min="6" max="40" value="11" /></div>
+            </div>
+          </div>
+        </div>
 
-      <div class="panel status" id="statusBar">Ready.</div>
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-trace">Trace style <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="form-row"><label>Line width</label><input id="lineWidth" type="number" min="1" max="8" value="2" /></div>
+            <div class="tog-grid" style="margin-top:6px;">
+              <button class="tog" id="normaliseBtn">Normalise</button>
+              <button class="tog" id="showMarkersBtn">Markers</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-axes">Axes <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="tog-grid">
+              <button class="tog" id="logXBtn">Log X</button>
+              <button class="tog" id="logYBtn">Log Y</button>
+              <button class="tog" id="showFrameBtn">Frame</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-xtrim">Global X trim <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <button class="tog" id="useGlobalXTrimBtn" style="width:100%;margin-bottom:7px;">Apply to all traces</button>
+            <div class="grid2">
+              <div class="form-row"><label>Min</label><input id="globalXMin" type="number" step="any" /></div>
+              <div class="form-row"><label>Max</label><input id="globalXMax" type="number" step="any" /></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-legend">Legend <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="form-row">
+              <label>Position</label>
+              <select id="legendPosition">
+                <option value="top right">top right</option>
+                <option value="top left">top left</option>
+                <option value="bottom right">bottom right</option>
+                <option value="bottom left">bottom left</option>
+                <option value="right">right</option>
+                <option value="left">left</option>
+                <option value="middle right">middle right</option>
+                <option value="middle left">middle left</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-export">Layout &amp; export <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+            <div class="grid2">
+              <div class="form-row">
+                <label>Aspect ratio</label>
+                <select id="aspectRatio">
+                  <option value="free" selected>free</option>
+                  <option value="1:1">1:1</option>
+                  <option value="4:3">4:3</option>
+                  <option value="16:9">16:9</option>
+                  <option value="3:2">3:2</option>
+                  <option value="21:9">21:9</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>Export scale</label>
+                <select id="exportScale">
+                  <option value="1">1×</option>
+                  <option value="2" selected>2×</option>
+                  <option value="3">3×</option>
+                  <option value="4">4×</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!-- Attribution -->
+    <div class="sidebar-footer">Georgios Tsiminis, 2026</div>
+  </div>
+  <div class="plot-area">
+    <div class="plot-wrap" id="plotWrap">
+      <div id="plot"></div>
     </div>
   </div>
 
-  <script>
-    const state = {
-      files: [],
-      activeIndex: -1,
-    };
+</div>
 
-    const els = {
-      fileInput: document.getElementById('fileInput'),
-      fileList: document.getElementById('fileList'),
-      removeFileBtn: document.getElementById('removeFileBtn'),
-      clearFilesBtn: document.getElementById('clearFilesBtn'),
-      traceName: document.getElementById('traceName'),
-      skipRows: document.getElementById('skipRows'),
-      delimiter: document.getElementById('delimiter'),
-      wavelengthCol: document.getElementById('wavelengthCol'),
-      intensityCol: document.getElementById('intensityCol'),
-      hasHeader: document.getElementById('hasHeader'),
-      visible: document.getElementById('visible'),
-      xMin: document.getElementById('xMin'),
-      xMax: document.getElementById('xMax'),
-      xRangeInfo: document.getElementById('xRangeInfo'),
-      useFullRangeBtn: document.getElementById('useFullRangeBtn'),
-      previewBtn: document.getElementById('previewBtn'),
-      applySettingsBtn: document.getElementById('applySettingsBtn'),
-      previewMeta: document.getElementById('previewMeta'),
-      previewBox: document.getElementById('previewBox'),
-      plotTitle: document.getElementById('plotTitle'),
-      xAxisLabel: document.getElementById('xAxisLabel'),
-      yAxisLabel: document.getElementById('yAxisLabel'),
-      legendPosition: document.getElementById('legendPosition'),
-      lineWidth: document.getElementById('lineWidth'),
-      axisFontSize: document.getElementById('axisFontSize'),
-      titleFontSize: document.getElementById('titleFontSize'),
-      tickFontSize: document.getElementById('tickFontSize'),
-      legendFontSize: document.getElementById('legendFontSize'),
-      normalise: document.getElementById('normalise'),
-      showMarkers: document.getElementById('showMarkers'),
-      showFrame: document.getElementById('showFrame'),
-      replotBtn: document.getElementById('replotBtn'),
-      statusBar: document.getElementById('statusBar'),
-      plot: document.getElementById('plot'),
-      logX: document.getElementById('logX'),
-      logY: document.getElementById('logY'),
-      useGlobalXTrim: document.getElementById('useGlobalXTrim'),
-      globalXMin: document.getElementById('globalXMin'),
-      globalXMax: document.getElementById('globalXMax'),
-      aspectRatio: document.getElementById('aspectRatio'),
-      exportScale: document.getElementById('exportScale'),
-      savePlotBtn: document.getElementById('savePlotBtn'),
-    };
+<script>
+// ══════════════════════════════════════════
+// State
+// ══════════════════════════════════════════
+const state = {
+  files: [], activeIndex: -1, theme: 'dark',
+  normalise: false, showMarkers: false, showFrame: false,
+  logX: false, logY: false, useGlobalXTrim: false,
+};
 
-    function setStatus(message) {
-      els.statusBar.textContent = message;
-    }
+const els = {
+  fileInput:        document.getElementById('fileInput'),
+  dropZone:         document.getElementById('dropZone'),
+  fileList:         document.getElementById('fileList'),
+  removeFileBtn:    document.getElementById('removeFileBtn'),
+  clearFilesBtn:    document.getElementById('clearFilesBtn'),
+  traceName:        document.getElementById('traceName'),
+  skipRows:         document.getElementById('skipRows'),
+  delimiter:        document.getElementById('delimiter'),
+  wavelengthCol:    document.getElementById('wavelengthCol'),
+  intensityCol:     document.getElementById('intensityCol'),
+  hasHeader:        document.getElementById('hasHeader'),
+  visible:          document.getElementById('visible'),
+  xMin:             document.getElementById('xMin'),
+  xMax:             document.getElementById('xMax'),
+  xRangeInfo:       document.getElementById('xRangeInfo'),
+  useFullRangeBtn:  document.getElementById('useFullRangeBtn'),
+  previewBtn:       document.getElementById('previewBtn'),
+  applySettingsBtn: document.getElementById('applySettingsBtn'),
+  previewMeta:      document.getElementById('previewMeta'),
+  previewBox:       document.getElementById('previewBox'),
+  plotTitle:        document.getElementById('plotTitle'),
+  xAxisLabel:       document.getElementById('xAxisLabel'),
+  yAxisLabel:       document.getElementById('yAxisLabel'),
+  titleFontSize:    document.getElementById('titleFontSize'),
+  axisFontSize:     document.getElementById('axisFontSize'),
+  tickFontSize:     document.getElementById('tickFontSize'),
+  legendFontSize:   document.getElementById('legendFontSize'),
+  lineWidth:        document.getElementById('lineWidth'),
+  legendPosition:   document.getElementById('legendPosition'),
+  globalXMin:       document.getElementById('globalXMin'),
+  globalXMax:       document.getElementById('globalXMax'),
+  aspectRatio:      document.getElementById('aspectRatio'),
+  exportScale:      document.getElementById('exportScale'),
+  statusBar:        document.getElementById('statusBar'),
+  plot:             document.getElementById('plot'),
+  plotWrap:         document.getElementById('plotWrap'),
+  sidebar:          document.getElementById('sidebar'),
+  collapseBtn:      document.getElementById('collapseBtn'),
+  resizeHandle:     document.getElementById('resizeHandle'),
+  savePlotBtn:      document.getElementById('savePlotBtn'),
+  replotBtn:        document.getElementById('replotBtn'),
+  themeToggleBtn:   document.getElementById('themeToggleBtn'),
+  normaliseBtn:     document.getElementById('normaliseBtn'),
+  showMarkersBtn:   document.getElementById('showMarkersBtn'),
+  showFrameBtn:     document.getElementById('showFrameBtn'),
+  logXBtn:          document.getElementById('logXBtn'),
+  logYBtn:          document.getElementById('logYBtn'),
+  useGlobalXTrimBtn:document.getElementById('useGlobalXTrimBtn'),
+};
 
-    function sniffDelimiter(text) {
-      const lines = text.split(/\r?\n/).filter(line => line.trim()).slice(0, 12);
-      if (!lines.length) return null;
+// ══════════════════════════════════════════
+// Tabs
+// ══════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
 
-      const candidates = ['\t', ',', ';', ' '];
-      const scored = [];
+// ══════════════════════════════════════════
+// Collapsible sidebar sections
+// ══════════════════════════════════════════
+document.querySelectorAll('.sb-sec-hdr').forEach(hdr => {
+  hdr.addEventListener('click', () => hdr.closest('.sb-sec').classList.toggle('closed'));
+});
 
-      for (const delim of candidates) {
-        const counts = lines.map(line => delim === ' ' ? line.trim().split(/\s+/).length : line.split(delim).length);
-        const minCols = Math.min(...counts);
-        const maxCols = Math.max(...counts);
-        const meanCols = counts.reduce((a, b) => a + b, 0) / counts.length;
-        scored.push({ delim, minCols, spread: maxCols - minCols, meanCols });
+// ══════════════════════════════════════════
+// Sidebar collapse
+// ══════════════════════════════════════════
+els.collapseBtn.addEventListener('click', () => {
+  const c = els.sidebar.classList.toggle('collapsed');
+  els.collapseBtn.textContent = c ? '›' : '‹';
+  setTimeout(() => Plotly.Plots.resize(els.plot), 60);
+});
+
+// ══════════════════════════════════════════
+// Sidebar resize drag
+// ══════════════════════════════════════════
+{
+  let dragging = false, startX = 0, startW = 0;
+  els.resizeHandle.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = els.sidebar.offsetWidth;
+    els.resizeHandle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.max(200, Math.min(480, startW + (e.clientX - startX)));
+    els.sidebar.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    els.resizeHandle.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    Plotly.Plots.resize(els.plot);
+  });
+}
+
+// ══════════════════════════════════════════
+// Toggle buttons
+// ══════════════════════════════════════════
+function setupToggle(btn, key, onToggle) {
+  btn.addEventListener('click', () => {
+    state[key] = !state[key];
+    btn.classList.toggle('on', state[key]);
+    if (onToggle) onToggle(state[key]);
+    plotAll();
+  });
+}
+setupToggle(els.normaliseBtn,      'normalise');
+setupToggle(els.showMarkersBtn,    'showMarkers');
+setupToggle(els.showFrameBtn,      'showFrame');
+setupToggle(els.logXBtn,           'logX');
+setupToggle(els.logYBtn,           'logY');
+setupToggle(els.useGlobalXTrimBtn, 'useGlobalXTrim', on => {
+  if (on) {
+    const hasMin = parseNum(els.globalXMin.value) !== null;
+    const hasMax = parseNum(els.globalXMax.value) !== null;
+    if (!hasMin && !hasMax) seedGlobalTrim();
+  }
+});
+
+// ══════════════════════════════════════════
+// Theme
+// ══════════════════════════════════════════
+function applyTheme(theme) {
+  state.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  els.themeToggleBtn.textContent = theme === 'light' ? '🌙 Dark' : '☀ Light';
+  plotAll();
+}
+els.themeToggleBtn.addEventListener('click', () => applyTheme(state.theme === 'dark' ? 'light' : 'dark'));
+els.replotBtn.addEventListener('click', plotAll);
+
+// ══════════════════════════════════════════
+// Utilities
+// ══════════════════════════════════════════
+function setStatus(msg) { els.statusBar.textContent = msg; }
+function parseNum(v) { if (v===''||v==null) return null; const n=Number(v); return isFinite(n)?n:null; }
+function escHtml(v) { return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+function norm01(vals) {
+  if (!vals.length) return [];
+  const mn=Math.min(...vals), mx=Math.max(...vals);
+  return mn===mx ? vals.map(()=>0) : vals.map(v=>(v-mn)/(mx-mn));
+}
+
+// ══════════════════════════════════════════
+// Parsing
+// ══════════════════════════════════════════
+function sniffDelim(text) {
+  const lines = text.split(/\r?\n/).filter(l=>l.trim()).slice(0,12);
+  if (!lines.length) return null;
+  const cands=['\t',',',';',' '];
+  const scored = cands.map(d=>{
+    const counts=lines.map(l=>d===' '?l.trim().split(/\s+/).length:l.split(d).length);
+    return {d,min:Math.min(...counts),spread:Math.max(...counts)-Math.min(...counts),mean:counts.reduce((a,b)=>a+b,0)/counts.length};
+  });
+  scored.sort((a,b)=>b.min-a.min||a.spread-b.spread||b.mean-a.mean);
+  return scored[0].min>1?scored[0].d:null;
+}
+
+function guessDataStart(text) {
+  const lines=text.split(/\r?\n/);
+  for (let i=0;i<lines.length;i++) if(lines[i].includes('Begin Spectral Data')) return i+1;
+  for (let i=0;i<lines.length;i++) {
+    const l=lines[i].trim(); if(!l) continue;
+    const parts=l.replace(/,/g,' ').split(/\s+/).slice(0,3);
+    if(parts.filter(p=>p!==''&&isFinite(Number(p))).length>=2) return i;
+  }
+  return 0;
+}
+
+function splitLine(line,dc) {
+  if(dc==='Whitespace') return line.trim().split(/\s+/);
+  if(dc==='Tab') return line.split('\t');
+  if(dc==='Comma') return line.split(',');
+  if(dc==='Semicolon') return line.split(';');
+  const a=sniffDelim(line);
+  if(a==='\t') return line.split('\t');
+  if(a===',') return line.split(',');
+  if(a===';') return line.split(';');
+  return line.trim().split(/\s+/);
+}
+
+function parseTable(text,skip,dc,hasHeader) {
+  const lines=text.split(/\r?\n/);
+  if(skip>=lines.length) return {columns:[],rows:[]};
+  const body=lines.slice(skip).filter(l=>l.trim()!=='');
+  if(!body.length) return {columns:[],rows:[]};
+  let adc=dc;
+  if(dc==='Auto'){
+    const g=sniffDelim(body.slice(0,12).join('\n'));
+    adc=g==='\t'?'Tab':g===','?'Comma':g===';'?'Semicolon':'Whitespace';
+  }
+  const split=body.map(l=>splitLine(l,adc));
+  const nonEmpty=split.filter(r=>r.some(p=>String(p).trim()!==''));
+  if(!nonEmpty.length) return {columns:[],rows:[]};
+  const maxC=Math.max(...nonEmpty.map(r=>r.length));
+  const padded=nonEmpty.map(r=>{while(r.length<maxC)r.push('');return r.map(v=>String(v).trim());});
+  const columns=hasHeader?padded[0].map((n,i)=>n||`col_${i}`):Array.from({length:maxC},(_,i)=>`col_${i}`);
+  const rows=hasHeader?padded.slice(1):padded;
+  return {columns,rows};
+}
+
+function extractXY(table,wCol,iCol) {
+  const xi=table.columns.indexOf(wCol),yi=table.columns.indexOf(iCol);
+  if(xi<0||yi<0) return {x:[],y:[]};
+  const x=[],y=[];
+  for(const row of table.rows){
+    const xv=Number(row[xi]),yv=Number(row[yi]);
+    if(isFinite(xv)&&isFinite(yv)){x.push(xv);y.push(yv);}
+  }
+  const pairs=x.map((v,i)=>({x:v,y:y[i]})).sort((a,b)=>a.x-b.x);
+  return {x:pairs.map(p=>p.x),y:pairs.map(p=>p.y)};
+}
+
+function trimXY(x,y,mn,mx) {
+  const tx=[],ty=[];
+  for(let i=0;i<x.length;i++){
+    if(mn!==null&&x[i]<mn) continue;
+    if(mx!==null&&x[i]>mx) continue;
+    tx.push(x[i]);ty.push(y[i]);
+  }
+  return {x:tx,y:ty};
+}
+
+function expandRange(mn,mx) {
+  if(!isFinite(mn)||!isFinite(mx)) return null;
+  if(mn===mx) return [mn-1,mx+1];
+  const pad=Math.max(1,(mx-mn)*0.01);
+  return [mn-pad,mx+pad];
+}
+
+// ══════════════════════════════════════════
+// UI helpers
+// ══════════════════════════════════════════
+function fillSel(el,vals,sel) {
+  el.innerHTML='';
+  vals.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);});
+  el.value=vals.includes(sel)?sel:(vals[0]||'');
+}
+
+function getActive() {
+  return state.activeIndex>=0&&state.activeIndex<state.files.length?state.files[state.activeIndex]:null;
+}
+
+// Drag-reorder state
+let dragSrcIndex = -1;
+
+function refreshFileList() {
+  els.fileList.innerHTML='';
+  state.files.forEach((f,i)=>{
+    const d=document.createElement('div');
+    d.className=`file-item${i===state.activeIndex?' active':''}`;
+    d.draggable=true;
+
+    // ── Drag handle (6-dot grip) ──
+    const handle=document.createElement('div');
+    handle.className='drag-handle';
+    for(let r=0;r<3;r++){handle.appendChild(document.createElement('span'));}
+    // Dragging must start from the handle
+    handle.addEventListener('mousedown', ()=>{ d.draggable=true; });
+
+    // ── Content wrapper ──
+    const content=document.createElement('div');
+    content.className='file-item-content';
+
+    // Filename row
+    const nameEl=document.createElement('div');
+    nameEl.className='file-item-name';
+    nameEl.textContent=f.name;
+
+    // Trace name row — double-click to edit inline
+    const traceWrap=document.createElement('div');
+    traceWrap.style.marginTop='2px';
+
+    const traceEl=document.createElement('div');
+    traceEl.className='file-item-trace';
+    traceEl.textContent=f.traceName+(f.visible?'':' · hidden');
+    traceEl.title='Double-click to rename';
+
+    const hintEl=document.createElement('div');
+    hintEl.className='file-item-hint';
+    hintEl.textContent='double-click to rename · drag to reorder';
+
+    traceEl.addEventListener('dblclick', e=>{
+      e.stopPropagation();
+      d.draggable=false; // prevent drag triggering during text edit
+      const input=document.createElement('input');
+      input.className='trace-name-edit';
+      input.value=f.traceName;
+      traceWrap.replaceChild(input,traceEl);
+      input.focus();
+      input.select();
+
+      function commit(){
+        const val=input.value.trim()||f.name;
+        f.traceName=val;
+        if(state.activeIndex===i) els.traceName.value=val;
+        traceEl.textContent=val+(f.visible?'':' · hidden');
+        traceWrap.replaceChild(traceEl,input);
+        d.draggable=true;
+        plotAll();
       }
-
-      scored.sort((a, b) => {
-        if (b.minCols !== a.minCols) return b.minCols - a.minCols;
-        if (a.spread !== b.spread) return a.spread - b.spread;
-        return b.meanCols - a.meanCols;
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){e.preventDefault();commit();}
+        if(e.key==='Escape'){traceWrap.replaceChild(traceEl,input);d.draggable=true;}
       });
+    });
 
-      return scored[0].minCols > 1 ? scored[0].delim : null;
-    }
+    traceWrap.appendChild(traceEl);
+    traceWrap.appendChild(hintEl);
+    content.appendChild(nameEl);
+    content.appendChild(traceWrap);
 
-    function suggestDataStart(text) {
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i += 1) {
-        if (lines[i].includes('Begin Spectral Data')) return i + 1;
-      }
-      for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const parts = line.replace(/,/g, ' ').split(/\s+/).slice(0, 3);
-        let numericCount = 0;
-        for (const part of parts) {
-          if (part !== '' && Number.isFinite(Number(part))) numericCount += 1;
-        }
-        if (numericCount >= 2) return i;
-      }
-      return 0;
-    }
+    // Click to select (not during inline edit, not during drag)
+    d.addEventListener('click', e=>{
+      if(e.target.classList.contains('trace-name-edit')) return;
+      state.activeIndex=i;loadActive();refreshFileList();
+    });
 
-    function splitLine(line, delimiterChoice) {
-      if (delimiterChoice === 'Whitespace') return line.trim().split(/\s+/);
-      if (delimiterChoice === 'Tab') return line.split('\t');
-      if (delimiterChoice === 'Comma') return line.split(',');
-      if (delimiterChoice === 'Semicolon') return line.split(';');
+    // ── Drag events ──
+    d.addEventListener('dragstart', e=>{
+      dragSrcIndex=i;
+      d.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain', i); // required for Firefox
+    });
 
-      const auto = sniffDelimiter(line);
-      if (auto === '\t') return line.split('\t');
-      if (auto === ',') return line.split(',');
-      if (auto === ';') return line.split(';');
-      return line.trim().split(/\s+/);
-    }
-
-    function parseTextToTable(text, skipRows, delimiterChoice, hasHeader) {
-      const lines = text.split(/\r?\n/);
-      if (skipRows >= lines.length) return { columns: [], rows: [] };
-
-      const bodyLines = lines.slice(skipRows).filter(line => line.trim() !== '');
-      if (!bodyLines.length) return { columns: [], rows: [] };
-
-      let actualDelimiter = delimiterChoice;
-      if (delimiterChoice === 'Auto') {
-        const bodyText = bodyLines.slice(0, 12).join('\n');
-        const guessed = sniffDelimiter(bodyText);
-        if (guessed === '\t') actualDelimiter = 'Tab';
-        else if (guessed === ',') actualDelimiter = 'Comma';
-        else if (guessed === ';') actualDelimiter = 'Semicolon';
-        else actualDelimiter = 'Whitespace';
-      }
-
-      const splitRows = bodyLines.map(line => splitLine(line, actualDelimiter));
-      const nonEmptyRows = splitRows.filter(parts => parts.some(p => String(p).trim() !== ''));
-      if (!nonEmptyRows.length) return { columns: [], rows: [] };
-
-      const maxCols = Math.max(...nonEmptyRows.map(parts => parts.length));
-      const paddedRows = nonEmptyRows.map(parts => {
-        const row = parts.slice();
-        while (row.length < maxCols) row.push('');
-        return row.map(v => String(v).trim());
+    d.addEventListener('dragend', ()=>{
+      d.classList.remove('dragging');
+      document.querySelectorAll('.file-item').forEach(el=>{
+        el.classList.remove('drag-over-top','drag-over-bottom');
       });
+    });
 
-      let columns;
-      let dataRows;
-
-      if (hasHeader) {
-        columns = paddedRows[0].map((name, i) => name || `col_${i}`);
-        dataRows = paddedRows.slice(1);
-      } else {
-        columns = Array.from({ length: maxCols }, (_, i) => `col_${i}`);
-        dataRows = paddedRows;
-      }
-
-      return { columns, rows: dataRows };
-    }
-
-    function extractXY(table, wavelengthCol, intensityCol) {
-      const xIndex = table.columns.indexOf(wavelengthCol);
-      const yIndex = table.columns.indexOf(intensityCol);
-      if (xIndex < 0 || yIndex < 0) return { x: [], y: [] };
-
-      const x = [];
-      const y = [];
-      for (const row of table.rows) {
-        const xv = Number(row[xIndex]);
-        const yv = Number(row[yIndex]);
-        if (Number.isFinite(xv) && Number.isFinite(yv)) {
-          x.push(xv);
-          y.push(yv);
-        }
-      }
-
-      const pairs = x.map((v, i) => ({ x: v, y: y[i] })).sort((a, b) => a.x - b.x);
-      return {
-        x: pairs.map(p => p.x),
-        y: pairs.map(p => p.y),
-      };
-    }
-
-    function trimXYToRange(x, y, xMin, xMax) {
-      const trimmedX = [];
-      const trimmedY = [];
-      for (let i = 0; i < x.length; i += 1) {
-        const xv = x[i];
-        const yv = y[i];
-        if (xMin !== null && xv < xMin) continue;
-        if (xMax !== null && xv > xMax) continue;
-        trimmedX.push(xv);
-        trimmedY.push(yv);
-      }
-      return { x: trimmedX, y: trimmedY };
-    }
-
-    function parseOptionalNumber(value) {
-      if (value === '' || value === null || value === undefined) return null;
-      const num = Number(value);
-      return Number.isFinite(num) ? num : null;
-    }
-
-    function normalise01(values) {
-      if (!values.length) return [];
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      if (max === min) return values.map(() => 0);
-      return values.map(v => (v - min) / (max - min));
-    }
-
-    function legendLayout(position) {
-      switch (position) {
-        case 'top left': return { x: 0, y: 1, xanchor: 'left', yanchor: 'top' };
-        case 'top right': return { x: 1, y: 1, xanchor: 'right', yanchor: 'top' };
-        case 'bottom left': return { x: 0, y: 0, xanchor: 'left', yanchor: 'bottom' };
-        case 'bottom right': return { x: 1, y: 0, xanchor: 'right', yanchor: 'bottom' };
-        case 'left': return { x: -0.02, y: 0.5, xanchor: 'right', yanchor: 'middle' };
-        case 'right': return { x: 1.02, y: 0.5, xanchor: 'left', yanchor: 'middle' };
-        case 'middle left': return { x: 0, y: 0.5, xanchor: 'left', yanchor: 'middle' };
-        case 'middle right': return { x: 1, y: 0.5, xanchor: 'right', yanchor: 'middle' };
-        default: return { x: 1, y: 1, xanchor: 'right', yanchor: 'top' };
-      }
-    }
-
-    function getAspectDimensions(aspectRatio) {
-      const baseWidth = 1200;
-      if (aspectRatio === '1:1') return { width: baseWidth, height: 1200 };
-      if (aspectRatio === '4:3') return { width: baseWidth, height: 900 };
-      if (aspectRatio === '16:9') return { width: baseWidth, height: 675 };
-      if (aspectRatio === '3:2') return { width: baseWidth, height: 800 };
-      if (aspectRatio === '21:9') return { width: baseWidth, height: 514 };
-      return { width: null, height: null };
-    }
-
-    function getActiveFile() {
-      if (state.activeIndex < 0 || state.activeIndex >= state.files.length) return null;
-      return state.files[state.activeIndex];
-    }
-
-    function refreshFileList() {
-      els.fileList.innerHTML = '';
-      state.files.forEach((file, index) => {
-        const div = document.createElement('div');
-        div.className = `file-item ${index === state.activeIndex ? 'active' : ''}`;
-        div.innerHTML = `
-          <div class="file-item-title">${escapeHtml(file.name)}</div>
-          <div class="file-item-sub">${escapeHtml(file.traceName)} · skip ${file.skipRows}${file.visible ? '' : ' · <span class="hidden-note">hidden</span>'}</div>
-        `;
-        div.addEventListener('click', () => {
-          state.activeIndex = index;
-          loadActiveFileIntoControls();
-          refreshFileList();
-        });
-        els.fileList.appendChild(div);
+    d.addEventListener('dragover', e=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect='move';
+      // Show indicator above or below based on cursor position
+      document.querySelectorAll('.file-item').forEach(el=>{
+        el.classList.remove('drag-over-top','drag-over-bottom');
       });
+      if(i===dragSrcIndex) return;
+      const rect=d.getBoundingClientRect();
+      const mid=rect.top+rect.height/2;
+      d.classList.add(e.clientY<mid?'drag-over-top':'drag-over-bottom');
+    });
 
-      const hasFiles = state.files.length > 0;
-      els.clearFilesBtn.disabled = !hasFiles;
-      els.removeFileBtn.disabled = !hasFiles || state.activeIndex < 0;
-      els.previewBtn.disabled = !hasFiles || state.activeIndex < 0;
-      els.applySettingsBtn.disabled = !hasFiles || state.activeIndex < 0;
-    }
+    d.addEventListener('dragleave', ()=>{
+      d.classList.remove('drag-over-top','drag-over-bottom');
+    });
 
-    function fillSelect(selectEl, values, selectedValue) {
-      selectEl.innerHTML = '';
-      values.forEach(value => {
-        const opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = value;
-        selectEl.appendChild(opt);
-      });
-      if (values.includes(selectedValue)) selectEl.value = selectedValue;
-      else if (values.length) selectEl.value = values[0];
-    }
+    d.addEventListener('drop', e=>{
+      e.preventDefault();
+      d.classList.remove('drag-over-top','drag-over-bottom');
+      if(dragSrcIndex<0||dragSrcIndex===i) return;
 
-    function updatePreview(table, fileName) {
-      if (!table.columns.length) {
-        els.previewMeta.textContent = `${fileName}: no tabular data parsed with current settings.`;
-        els.previewBox.value = '';
-        return;
-      }
+      // Remember which file object is currently active
+      const activeFile=getActive();
 
-      const lines = [];
-      lines.push(table.columns.join('\t'));
-      table.rows.slice(0, 20).forEach(row => lines.push(row.join('\t')));
-      els.previewMeta.textContent = `${fileName}: ${table.rows.length} row(s), ${table.columns.length} column(s)`;
-      els.previewBox.value = lines.join('\n');
-    }
+      // Determine insert position (above or below target)
+      const rect=d.getBoundingClientRect();
+      const mid=rect.top+rect.height/2;
+      let insertAt = e.clientY<mid ? i : i+1;
 
-    function loadActiveFileIntoControls() {
-      const file = getActiveFile();
-      if (!file) {
-        els.traceName.value = '';
-        els.skipRows.value = 0;
-        els.delimiter.value = 'Auto';
-        els.hasHeader.checked = false;
-        els.visible.checked = true;
-        els.xMin.value = '';
-        els.xMax.value = '';
-        els.xRangeInfo.textContent = 'X range: not available';
-        els.useFullRangeBtn.disabled = true;
-        fillSelect(els.wavelengthCol, [], '');
-        fillSelect(els.intensityCol, [], '');
-        els.previewMeta.textContent = 'No file selected.';
-        els.previewBox.value = '';
-        return;
-      }
+      // Splice the dragged item out and re-insert
+      const [moved]=state.files.splice(dragSrcIndex,1);
+      if(insertAt>dragSrcIndex) insertAt--;
+      state.files.splice(insertAt,0,moved);
 
-      els.traceName.value = file.traceName;
-      els.skipRows.value = file.skipRows;
-      els.delimiter.value = file.delimiter;
-      els.hasHeader.checked = file.hasHeader;
-      els.visible.checked = file.visible;
+      // Restore activeIndex by finding the same file object
+      state.activeIndex=activeFile ? state.files.indexOf(activeFile) : -1;
 
-      const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
-      fillSelect(els.wavelengthCol, table.columns, file.wavelengthCol || table.columns[0] || '');
-      fillSelect(els.intensityCol, table.columns, file.intensityCol || table.columns[1] || table.columns[0] || '');
-
-      const wavelengthCol = els.wavelengthCol.value || file.wavelengthCol || table.columns[0] || null;
-      const intensityCol = els.intensityCol.value || file.intensityCol || table.columns[1] || table.columns[0] || null;
-      const xy = wavelengthCol && intensityCol ? extractXY(table, wavelengthCol, intensityCol) : { x: [], y: [] };
-
-      if (xy.x.length) {
-        const fullXMin = Math.min(...xy.x);
-        const fullXMax = Math.max(...xy.x);
-        els.xRangeInfo.textContent = `X range available: ${fullXMin} to ${fullXMax}`;
-        els.useFullRangeBtn.disabled = false;
-        els.xMin.value = file.xMin ?? fullXMin;
-        els.xMax.value = file.xMax ?? fullXMax;
-      } else {
-        els.xMin.value = '';
-        els.xMax.value = '';
-        els.xRangeInfo.textContent = 'X range: not available';
-        els.useFullRangeBtn.disabled = true;
-      }
-
-      updatePreview(table, file.name);
-    }
-
-    function applyControlsToActiveFile() {
-      const file = getActiveFile();
-      if (!file) return;
-
-      file.traceName = (els.traceName.value || file.name).trim() || file.name;
-      file.skipRows = Math.max(0, Number(els.skipRows.value || 0));
-      file.delimiter = els.delimiter.value;
-      file.hasHeader = els.hasHeader.checked;
-      file.visible = els.visible.checked;
-
-      const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
-      fillSelect(els.wavelengthCol, table.columns, els.wavelengthCol.value);
-      fillSelect(els.intensityCol, table.columns, els.intensityCol.value);
-
-      file.wavelengthCol = els.wavelengthCol.value || table.columns[0] || null;
-      file.intensityCol = els.intensityCol.value || table.columns[1] || table.columns[0] || null;
-
-      const xy = file.wavelengthCol && file.intensityCol ? extractXY(table, file.wavelengthCol, file.intensityCol) : { x: [], y: [] };
-      if (xy.x.length) {
-        const fullXMin = Math.min(...xy.x);
-        const fullXMax = Math.max(...xy.x);
-        let xMin = els.xMin.value === '' ? null : Number(els.xMin.value);
-        let xMax = els.xMax.value === '' ? null : Number(els.xMax.value);
-
-        if (!Number.isFinite(xMin)) xMin = null;
-        if (!Number.isFinite(xMax)) xMax = null;
-        if (xMin !== null && xMin < fullXMin) xMin = fullXMin;
-        if (xMax !== null && xMax > fullXMax) xMax = fullXMax;
-        if (xMin !== null && xMax !== null && xMin > xMax) {
-          const temp = xMin;
-          xMin = xMax;
-          xMax = temp;
-        }
-
-        file.xMin = xMin;
-        file.xMax = xMax;
-        els.xMin.value = xMin ?? fullXMin;
-        els.xMax.value = xMax ?? fullXMax;
-        els.xRangeInfo.textContent = `X range available: ${fullXMin} to ${fullXMax}`;
-        els.useFullRangeBtn.disabled = false;
-      } else {
-        file.xMin = null;
-        file.xMax = null;
-        els.xMin.value = '';
-        els.xMax.value = '';
-        els.xRangeInfo.textContent = 'X range: not available';
-        els.useFullRangeBtn.disabled = true;
-      }
-
-      updatePreview(table, file.name);
+      dragSrcIndex=-1;
       refreshFileList();
-    }
-
-    function getCurrentFullXRange(file) {
-      if (!file) return null;
-      const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
-      if (table.columns.length < 2) return null;
-      const wavelengthCol = file.wavelengthCol || table.columns[0];
-      const intensityCol = file.intensityCol || table.columns[1] || table.columns[0];
-      const xy = extractXY(table, wavelengthCol, intensityCol);
-      if (!xy.x.length) return null;
-      return {
-        min: Math.min(...xy.x),
-        max: Math.max(...xy.x),
-      };
-    }
-
-    function seedGlobalTrimFromActiveFile() {
-      const file = getActiveFile();
-      if (!file) return;
-      const range = getCurrentFullXRange(file);
-      if (!range) return;
-
-      const seededMin = file.xMin ?? range.min;
-      const seededMax = file.xMax ?? range.max;
-
-      els.globalXMin.value = seededMin;
-      els.globalXMax.value = seededMax;
-    }
-
-    function getExpandedLinearRange(minVal, maxVal) {
-      if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return null;
-      if (minVal === maxVal) {
-        return [minVal - 1, maxVal + 1];
-      }
-      const span = maxVal - minVal;
-      const pad = Math.max(1, span * 0.01);
-      return [minVal - pad, maxVal + pad];
-    }
-
-    function plotAll() {
-      const traces = [];
-      let plotted = 0;
-      let plottedXMin = null;
-      let plottedXMax = null;
-      const normalise = els.normalise.checked;
-      const showMarkers = els.showMarkers.checked;
-      const lineWidth = Math.max(1, Number(els.lineWidth.value || 2));
-      const axisFontSize = Math.max(6, Number(els.axisFontSize.value || 12));
-      const titleFontSize = Math.max(6, Number(els.titleFontSize.value || 16));
-      const tickFontSize = Math.max(6, Number(els.tickFontSize.value || 10));
-      const legendFontSize = Math.max(6, Number(els.legendFontSize.value || 10));
-      const showFrame = els.showFrame.checked;
-      const useGlobalXTrim = els.useGlobalXTrim.checked;
-      let globalXMin = parseOptionalNumber(els.globalXMin.value);
-      let globalXMax = parseOptionalNumber(els.globalXMax.value);
-      if (globalXMin !== null && globalXMax !== null && globalXMin > globalXMax) {
-        const temp = globalXMin;
-        globalXMin = globalXMax;
-        globalXMax = temp;
-      }
-
-      for (const file of state.files) {
-        if (!file.visible) continue;
-        const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
-        if (table.columns.length < 2) continue;
-
-        const wavelengthCol = file.wavelengthCol || table.columns[0];
-        const intensityCol = file.intensityCol || table.columns[1] || table.columns[0];
-        const xy = extractXY(table, wavelengthCol, intensityCol);
-        if (!xy.x.length) continue;
-
-        const trimMin = useGlobalXTrim ? globalXMin : (file.xMin ?? null);
-        const trimMax = useGlobalXTrim ? globalXMax : (file.xMax ?? null);
-        const trimmed = trimXYToRange(xy.x, xy.y, trimMin, trimMax);
-        if (!trimmed.x.length) continue;
-
-        const traceXMin = Math.min(...trimmed.x);
-        const traceXMax = Math.max(...trimmed.x);
-        plottedXMin = plottedXMin === null ? traceXMin : Math.min(plottedXMin, traceXMin);
-        plottedXMax = plottedXMax === null ? traceXMax : Math.max(plottedXMax, traceXMax);
-
-        traces.push({
-          x: trimmed.x,
-          y: normalise ? normalise01(trimmed.y) : trimmed.y,
-          mode: showMarkers ? 'lines+markers' : 'lines',
-          name: file.traceName || file.name,
-          line: { width: lineWidth },
-          marker: { size: 5 },
-          type: 'scatter',
-        });
-        plotted += 1;
-      }
-
-      const legend = legendLayout(els.legendPosition.value);
-      const aspect = getAspectDimensions(els.aspectRatio.value);
-      const layout = {
-        title: {
-          text: els.plotTitle.value || 'Spectra viewer',
-          font: { size: titleFontSize }
-        },
-        xaxis: {
-          title: {
-            text: els.xAxisLabel.value || 'Wavelength',
-            font: { size: axisFontSize }
-          },
-          tickfont: { size: tickFontSize },
-          zeroline: false,
-          type: els.logX.checked ? 'log' : 'linear',
-          showline: true,
-          linecolor: '#000000',
-          linewidth: 1,
-          mirror: showFrame ? 'allticks' : false,
-          ticks: 'outside',
-        },
-        yaxis: {
-          title: {
-            text: normalise ? 'Normalised intensity (0-1)' : (els.yAxisLabel.value || 'Intensity'),
-            font: { size: axisFontSize }
-          },
-          tickfont: { size: tickFontSize },
-          zeroline: false,
-          type: els.logY.checked ? 'log' : 'linear',
-          showline: true,
-          linecolor: '#000000',
-          linewidth: 1,
-          mirror: showFrame ? 'allticks' : false,
-          ticks: 'outside',
-        },
-        legend: {
-          ...legend,
-          font: { size: legendFontSize },
-          bgcolor: 'rgba(255,255,255,0.85)',
-          bordercolor: '#d8dee9',
-          borderwidth: 1,
-        },
-        margin: { l: 70, r: 40, t: 70, b: 70 },
-        template: 'plotly_white',
-        hovermode: 'closest',
-      };
-
-      if (aspect.width && aspect.height) {
-        layout.width = aspect.width;
-        layout.height = aspect.height;
-      }
-
-      if (!els.logX.checked && plottedXMin !== null && plottedXMax !== null) {
-        const expandedRange = getExpandedLinearRange(plottedXMin, plottedXMax);
-        if (expandedRange) {
-          layout.xaxis.range = expandedRange;
-        }
-      }
-
-      const exportScale = Math.max(1, Number(els.exportScale.value || 2));
-      const config = {
-        responsive: true,
-        scrollZoom: true,
-        displaylogo: false,
-        toImageButtonOptions: {
-          format: 'png',
-          filename: (els.plotTitle.value || 'spectra_viewer').trim().replace(/\s+/g, '_') || 'spectra_viewer',
-          scale: exportScale,
-        },
-      };
-
-      Plotly.newPlot(els.plot, traces, layout, config);
-      if (useGlobalXTrim && globalXMin === null && globalXMax === null) {
-        setStatus(plotted ? 'Global X trim is enabled, but no global min/max is set, so full ranges are being shown.' : 'No valid visible traces to plot.');
-      } else {
-        setStatus(plotted ? `Plotted ${plotted} trace(s).` : 'No valid visible traces to plot.');
-      }
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-    }
-
-    async function handleFiles(fileList) {
-      const files = Array.from(fileList);
-      if (!files.length) return;
-
-      for (const file of files) {
-        const text = await file.text();
-        const skipRows = suggestDataStart(text);
-        const parsed = parseTextToTable(text, skipRows, 'Auto', false);
-
-        state.files.push({
-          name: file.name,
-          text,
-          skipRows,
-          delimiter: 'Auto',
-          hasHeader: false,
-          wavelengthCol: parsed.columns[0] || null,
-          intensityCol: parsed.columns[1] || parsed.columns[0] || null,
-          traceName: file.name.replace(/\.[^.]+$/, ''),
-          visible: true,
-          xMin: null,
-          xMax: null,
-        });
-      }
-
-      if (state.activeIndex < 0 && state.files.length > 0) state.activeIndex = 0;
-      refreshFileList();
-      loadActiveFileIntoControls();
-      plotAll();
-    }
-
-    els.fileInput.addEventListener('change', async (event) => {
-      await handleFiles(event.target.files);
-      els.fileInput.value = '';
-    });
-
-    els.previewBtn.addEventListener('click', () => {
-      applyControlsToActiveFile();
-      setStatus('Preview updated.');
-    });
-
-    els.applySettingsBtn.addEventListener('click', () => {
-      applyControlsToActiveFile();
       plotAll();
     });
 
-    els.useFullRangeBtn.addEventListener('click', () => {
-      const file = getActiveFile();
-      if (!file) return;
-      const table = parseTextToTable(file.text, file.skipRows, file.delimiter, file.hasHeader);
-      const wavelengthCol = els.wavelengthCol.value || file.wavelengthCol || table.columns[0] || null;
-      const intensityCol = els.intensityCol.value || file.intensityCol || table.columns[1] || table.columns[0] || null;
-      const xy = wavelengthCol && intensityCol ? extractXY(table, wavelengthCol, intensityCol) : { x: [], y: [] };
-      if (!xy.x.length) return;
-      const fullXMin = Math.min(...xy.x);
-      const fullXMax = Math.max(...xy.x);
-      els.xMin.value = fullXMin;
-      els.xMax.value = fullXMax;
-      file.xMin = fullXMin;
-      file.xMax = fullXMax;
-      els.xRangeInfo.textContent = `X range available: ${fullXMin} to ${fullXMax}`;
-      plotAll();
-      setStatus('Full X range restored.');
-    });
+    d.appendChild(handle);
+    d.appendChild(content);
+    els.fileList.appendChild(d);
+  });
+  const hf=state.files.length>0,ha=state.activeIndex>=0;
+  els.clearFilesBtn.disabled=!hf;
+  els.removeFileBtn.disabled=!hf||!ha;
+  els.previewBtn.disabled=!ha;
+  els.applySettingsBtn.disabled=!ha;
+}
 
-    els.replotBtn.addEventListener('click', plotAll);
-    els.useGlobalXTrim.addEventListener('change', () => {
-      if (els.useGlobalXTrim.checked) {
-        const hasGlobalMin = parseOptionalNumber(els.globalXMin.value) !== null;
-        const hasGlobalMax = parseOptionalNumber(els.globalXMax.value) !== null;
-        if (!hasGlobalMin && !hasGlobalMax) {
-          seedGlobalTrimFromActiveFile();
-        }
-      }
-      plotAll();
-    });
-    els.removeFileBtn.addEventListener('click', () => {
-      if (state.activeIndex < 0) return;
-      state.files.splice(state.activeIndex, 1);
-      if (!state.files.length) state.activeIndex = -1;
-      else state.activeIndex = Math.min(state.activeIndex, state.files.length - 1);
-      refreshFileList();
-      loadActiveFileIntoControls();
-      plotAll();
-    });
+function updatePreview(table,name) {
+  if(!table.columns.length){
+    els.previewMeta.textContent=`${name}: no tabular data parsed`;
+    els.previewBox.value=''; return;
+  }
+  els.previewMeta.textContent=`${name}: ${table.rows.length} rows · ${table.columns.length} cols`;
+  els.previewBox.value=[table.columns.join('\t'),...table.rows.slice(0,20).map(r=>r.join('\t'))].join('\n');
+}
 
-    els.clearFilesBtn.addEventListener('click', () => {
-      state.files = [];
-      state.activeIndex = -1;
-      refreshFileList();
-      loadActiveFileIntoControls();
-      plotAll();
-    });
+function loadActive() {
+  const f=getActive();
+  if(!f){
+    els.traceName.value='';els.skipRows.value=0;els.delimiter.value='Auto';
+    els.hasHeader.checked=false;els.visible.checked=true;
+    els.xMin.value='';els.xMax.value='';
+    els.xRangeInfo.textContent='Full range: —';els.useFullRangeBtn.disabled=true;
+    fillSel(els.wavelengthCol,[],''  );fillSel(els.intensityCol,[],''  );
+    els.previewMeta.textContent='No file selected.';els.previewBox.value='';
+    return;
+  }
+  els.traceName.value=f.traceName;els.skipRows.value=f.skipRows;
+  els.delimiter.value=f.delimiter;els.hasHeader.checked=f.hasHeader;els.visible.checked=f.visible;
+  const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
+  fillSel(els.wavelengthCol,t.columns,f.wavelengthCol||t.columns[0]||'');
+  fillSel(els.intensityCol, t.columns,f.intensityCol||t.columns[1]||t.columns[0]||'');
+  const wc=els.wavelengthCol.value||t.columns[0]||null;
+  const ic=els.intensityCol.value||t.columns[1]||t.columns[0]||null;
+  const xy=wc&&ic?extractXY(t,wc,ic):{x:[],y:[]};
+  if(xy.x.length){
+    const fmn=Math.min(...xy.x),fmx=Math.max(...xy.x);
+    els.xRangeInfo.textContent=`Full range: ${fmn} – ${fmx}`;
+    els.useFullRangeBtn.disabled=false;
+    els.xMin.value=f.xMin??fmn;els.xMax.value=f.xMax??fmx;
+  } else {
+    els.xMin.value='';els.xMax.value='';
+    els.xRangeInfo.textContent='Full range: —';els.useFullRangeBtn.disabled=true;
+  }
+  updatePreview(t,f.name);
+}
 
-    els.savePlotBtn.addEventListener('click', async () => {
-      const exportScale = Math.max(1, Number(els.exportScale.value || 2));
-      const filename = (els.plotTitle.value || 'spectra_viewer').trim().replace(/\s+/g, '_') || 'spectra_viewer';
-      try {
-        await Plotly.downloadImage(els.plot, {
-          format: 'png',
-          filename,
-          scale: exportScale,
-        });
-        setStatus(`Saved plot as PNG (${exportScale}x scale).`);
-      } catch (error) {
-        setStatus('Failed to save plot image.');
-        console.error(error);
-      }
-    });
+function applyActive() {
+  const f=getActive(); if(!f) return;
+  f.traceName=(els.traceName.value||f.name).trim()||f.name;
+  f.skipRows=Math.max(0,Number(els.skipRows.value||0));
+  f.delimiter=els.delimiter.value;f.hasHeader=els.hasHeader.checked;f.visible=els.visible.checked;
+  const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
+  fillSel(els.wavelengthCol,t.columns,els.wavelengthCol.value);
+  fillSel(els.intensityCol, t.columns,els.intensityCol.value);
+  f.wavelengthCol=els.wavelengthCol.value||t.columns[0]||null;
+  f.intensityCol =els.intensityCol.value||t.columns[1]||t.columns[0]||null;
+  const xy=f.wavelengthCol&&f.intensityCol?extractXY(t,f.wavelengthCol,f.intensityCol):{x:[],y:[]};
+  if(xy.x.length){
+    const fmn=Math.min(...xy.x),fmx=Math.max(...xy.x);
+    let xn=parseNum(els.xMin.value),xx=parseNum(els.xMax.value);
+    if(xn!==null&&xn<fmn)xn=fmn;if(xx!==null&&xx>fmx)xx=fmx;
+    if(xn!==null&&xx!==null&&xn>xx){const tmp=xn;xn=xx;xx=tmp;}
+    f.xMin=xn;f.xMax=xx;
+    els.xMin.value=xn??fmn;els.xMax.value=xx??fmx;
+    els.xRangeInfo.textContent=`Full range: ${fmn} – ${fmx}`;
+    els.useFullRangeBtn.disabled=false;
+  } else {
+    f.xMin=null;f.xMax=null;els.xMin.value='';els.xMax.value='';
+    els.xRangeInfo.textContent='Full range: —';els.useFullRangeBtn.disabled=true;
+  }
+  updatePreview(t,f.name);refreshFileList();
+}
 
-    [
-      els.plotTitle,
-      els.xAxisLabel,
-      els.yAxisLabel,
-      els.legendPosition,
-      els.lineWidth,
-      els.axisFontSize,
-      els.titleFontSize,
-      els.tickFontSize,
-      els.legendFontSize,
-      els.normalise,
-      els.showMarkers,
-      els.showFrame,
-      els.logX,
-      els.logY,
-      els.globalXMin,
-      els.globalXMax,
-      els.aspectRatio,
-      els.exportScale,
-    ].forEach(el => {
-      el.addEventListener('change', plotAll);
-      if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')) {
-        el.addEventListener('input', plotAll);
-      }
-    });
+function seedGlobalTrim(){
+  const f=getActive();if(!f)return;
+  const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
+  if(t.columns.length<2)return;
+  const wc=f.wavelengthCol||t.columns[0],ic=f.intensityCol||t.columns[1]||t.columns[0];
+  const xy=extractXY(t,wc,ic);if(!xy.x.length)return;
+  els.globalXMin.value=f.xMin??Math.min(...xy.x);
+  els.globalXMax.value=f.xMax??Math.max(...xy.x);
+}
 
-    const initialAspect = getAspectDimensions(els.aspectRatio.value);
-    const initialLayout = {
-      title: { text: 'Spectra viewer' },
-      template: 'plotly_white',
-      margin: { l: 70, r: 40, t: 70, b: 70 },
-    };
-    if (initialAspect.width && initialAspect.height) {
-      initialLayout.width = initialAspect.width;
-      initialLayout.height = initialAspect.height;
-    }
-    Plotly.newPlot(els.plot, [], initialLayout, {
-      responsive: true,
-      displaylogo: false,
-      toImageButtonOptions: {
-        format: 'png',
-        filename: 'spectra_viewer',
-        scale: Math.max(1, Number(els.exportScale.value || 2)),
-      },
+// ══════════════════════════════════════════
+// Aspect ratio (CSS-based, no fixed px)
+// ══════════════════════════════════════════
+function applyAspectRatio(ar) {
+  const map={'1:1':'1/1','4:3':'4/3','16:9':'16/9','3:2':'3/2','21:9':'21/9'};
+  if(map[ar]){
+    els.plotWrap.classList.add('has-ratio');
+    els.plotWrap.style.aspectRatio=map[ar];
+    els.plotWrap.style.maxHeight='calc(100vh - 42px)';
+  } else {
+    els.plotWrap.classList.remove('has-ratio');
+    els.plotWrap.style.aspectRatio='';
+    els.plotWrap.style.maxHeight='';
+  }
+}
+
+// ══════════════════════════════════════════
+// Legend position
+// ══════════════════════════════════════════
+function legPos(pos){
+  const m={
+    'top right':   {x:1,y:1,xanchor:'right',yanchor:'top'},
+    'top left':    {x:0,y:1,xanchor:'left',yanchor:'top'},
+    'bottom right':{x:1,y:0,xanchor:'right',yanchor:'bottom'},
+    'bottom left': {x:0,y:0,xanchor:'left',yanchor:'bottom'},
+    'right':       {x:1.02,y:0.5,xanchor:'left',yanchor:'middle'},
+    'left':        {x:-0.02,y:0.5,xanchor:'right',yanchor:'middle'},
+    'middle right':{x:1,y:0.5,xanchor:'right',yanchor:'middle'},
+    'middle left': {x:0,y:0.5,xanchor:'left',yanchor:'middle'},
+  };
+  return m[pos]||m['top right'];
+}
+
+// ══════════════════════════════════════════
+// Plot
+// ══════════════════════════════════════════
+function plotAll(){
+  const traces=[];let plotted=0,pxMn=null,pxMx=null;
+  const lw=Math.max(1,Number(els.lineWidth.value||2));
+  let gxMn=parseNum(els.globalXMin.value),gxMx=parseNum(els.globalXMax.value);
+  if(gxMn!==null&&gxMx!==null&&gxMn>gxMx){const t=gxMn;gxMn=gxMx;gxMx=t;}
+
+  const cs=getComputedStyle(document.documentElement),cv=k=>cs.getPropertyValue(k).trim();
+  const plotPaper=cv('--plot-paper'),plotBg=cv('--plot-bg'),
+        plotGrid=cv('--plot-grid'),plotLine=cv('--plot-line'),
+        plotFont=cv('--plot-font'),plotLegBg=cv('--plot-legend-bg');
+
+  const titleSz=Math.max(6,Number(els.titleFontSize.value||15));
+  const axisSz =Math.max(6,Number(els.axisFontSize.value||12));
+  const tickSz =Math.max(6,Number(els.tickFontSize.value||11));
+  const legSz  =Math.max(6,Number(els.legendFontSize.value||11));
+
+  for(const f of state.files){
+    if(!f.visible) continue;
+    const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
+    if(t.columns.length<2) continue;
+    const wc=f.wavelengthCol||t.columns[0];
+    const ic=f.intensityCol||t.columns[1]||t.columns[0];
+    const xy=extractXY(t,wc,ic);if(!xy.x.length) continue;
+    const tmn=state.useGlobalXTrim?gxMn:(f.xMin??null);
+    const tmx=state.useGlobalXTrim?gxMx:(f.xMax??null);
+    const tr=trimXY(xy.x,xy.y,tmn,tmx);if(!tr.x.length) continue;
+    const txmn=Math.min(...tr.x),txmx=Math.max(...tr.x);
+    pxMn=pxMn===null?txmn:Math.min(pxMn,txmn);
+    pxMx=pxMx===null?txmx:Math.max(pxMx,txmx);
+    traces.push({
+      x:tr.x,y:state.normalise?norm01(tr.y):tr.y,
+      mode:state.showMarkers?'lines+markers':'lines',
+      name:f.traceName||f.name,
+      line:{width:lw},marker:{size:5},type:'scatter',
     });
-  </script>
+    plotted++;
+  }
+
+  applyAspectRatio(els.aspectRatio.value);
+
+  const layout={
+    title:{text:els.plotTitle.value||'Spectra viewer',font:{size:titleSz,color:plotFont}},
+    paper_bgcolor:plotPaper,plot_bgcolor:plotBg,
+    font:{family:'IBM Plex Sans, sans-serif',color:plotFont},
+    xaxis:{
+      title:{text:els.xAxisLabel.value||'Wavelength',font:{size:axisSz}},
+      tickfont:{size:tickSz},zeroline:false,
+      type:state.logX?'log':'linear',
+      showline:true,linecolor:plotLine,linewidth:1,
+      gridcolor:plotGrid,mirror:state.showFrame?'allticks':false,
+      ticks:'outside',tickcolor:plotLine,
+    },
+    yaxis:{
+      title:{text:state.normalise?'Normalised intensity (0–1)':(els.yAxisLabel.value||'Intensity'),font:{size:axisSz}},
+      tickfont:{size:tickSz},zeroline:false,
+      type:state.logY?'log':'linear',
+      showline:true,linecolor:plotLine,linewidth:1,
+      gridcolor:plotGrid,mirror:state.showFrame?'allticks':false,
+      ticks:'outside',tickcolor:plotLine,
+    },
+    legend:{...legPos(els.legendPosition.value),font:{size:legSz},bgcolor:plotLegBg,bordercolor:plotLine,borderwidth:1},
+    margin:{l:65,r:30,t:55,b:60},
+    hovermode:'closest',autosize:true,
+  };
+
+  if(!state.logX&&pxMn!==null&&pxMx!==null){
+    const r=expandRange(pxMn,pxMx);if(r)layout.xaxis.range=r;
+  }
+
+  const scale=Math.max(1,Number(els.exportScale.value||2));
+  Plotly.newPlot(els.plot,traces,layout,{
+    responsive:true,scrollZoom:true,displaylogo:false,
+    toImageButtonOptions:{
+      format:'png',
+      filename:(els.plotTitle.value||'spectra_viewer').trim().replace(/\s+/g,'_')||'spectra_viewer',
+      scale,
+    },
+  });
+
+  if(state.useGlobalXTrim&&gxMn===null&&gxMx===null){
+    setStatus('Global X trim on — enter min/max to apply.');
+  } else {
+    setStatus(plotted?`Plotting ${plotted} trace(s).`:'No valid traces. Add files in the Files tab.');
+  }
+}
+
+// ══════════════════════════════════════════
+// File loading
+// ══════════════════════════════════════════
+async function handleFiles(list){
+  const files=Array.from(list);if(!files.length)return;
+  for(const f of files){
+    const text=await f.text();
+    const skip=guessDataStart(text);
+    const parsed=parseTable(text,skip,'Auto',false);
+    state.files.push({
+      name:f.name,text,skipRows:skip,delimiter:'Auto',hasHeader:false,
+      wavelengthCol:parsed.columns[0]||null,
+      intensityCol:parsed.columns[1]||parsed.columns[0]||null,
+      traceName:f.name.replace(/\.[^.]+$/,''),
+      visible:true,xMin:null,xMax:null,
+    });
+  }
+  if(state.activeIndex<0&&state.files.length>0) state.activeIndex=0;
+  refreshFileList();loadActive();plotAll();
+}
+
+// ══════════════════════════════════════════
+// Events
+// ══════════════════════════════════════════
+els.fileInput.addEventListener('change',async e=>{await handleFiles(e.target.files);els.fileInput.value='';});
+els.dropZone.addEventListener('dragover',e=>{e.preventDefault();els.dropZone.classList.add('dragover');});
+els.dropZone.addEventListener('dragleave',()=>els.dropZone.classList.remove('dragover'));
+els.dropZone.addEventListener('drop',async e=>{
+  e.preventDefault();els.dropZone.classList.remove('dragover');await handleFiles(e.dataTransfer.files);
+});
+
+els.previewBtn.addEventListener('click',()=>{applyActive();setStatus('Preview updated.');});
+els.applySettingsBtn.addEventListener('click',()=>{applyActive();plotAll();});
+
+els.useFullRangeBtn.addEventListener('click',()=>{
+  const f=getActive();if(!f)return;
+  const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
+  const wc=els.wavelengthCol.value||f.wavelengthCol||t.columns[0]||null;
+  const ic=els.intensityCol.value||f.intensityCol||t.columns[1]||t.columns[0]||null;
+  const xy=wc&&ic?extractXY(t,wc,ic):{x:[],y:[]};
+  if(!xy.x.length)return;
+  const mn=Math.min(...xy.x),mx=Math.max(...xy.x);
+  els.xMin.value=mn;els.xMax.value=mx;f.xMin=mn;f.xMax=mx;
+  plotAll();setStatus('Full X range restored.');
+});
+
+els.removeFileBtn.addEventListener('click',()=>{
+  if(state.activeIndex<0)return;
+  state.files.splice(state.activeIndex,1);
+  state.activeIndex=state.files.length?Math.min(state.activeIndex,state.files.length-1):-1;
+  refreshFileList();loadActive();plotAll();
+});
+
+els.clearFilesBtn.addEventListener('click',()=>{
+  state.files=[];state.activeIndex=-1;refreshFileList();loadActive();plotAll();
+});
+
+els.savePlotBtn.addEventListener('click',async()=>{
+  const scale=Math.max(1,Number(els.exportScale.value||2));
+  const fn=(els.plotTitle.value||'spectra_viewer').trim().replace(/\s+/g,'_')||'spectra_viewer';
+  try{await Plotly.downloadImage(els.plot,{format:'png',filename:fn,scale});setStatus(`Saved PNG (${scale}×).`);}
+  catch{setStatus('Failed to save plot image.');}
+});
+
+// Live-update from plot options
+[els.plotTitle,els.xAxisLabel,els.yAxisLabel,els.legendPosition,
+ els.lineWidth,els.globalXMin,els.globalXMax,els.aspectRatio,els.exportScale,
+ els.titleFontSize,els.axisFontSize,els.tickFontSize,els.legendFontSize,
+].forEach(el=>{
+  el.addEventListener('change',plotAll);
+  if(el.tagName==='INPUT'&&(el.type==='text'||el.type==='number'))
+    el.addEventListener('input',plotAll);
+});
+
+// ══════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════
+applyTheme('light');
+applyAspectRatio('free');
+const _cs=getComputedStyle(document.documentElement),_cv=k=>_cs.getPropertyValue(k).trim();
+Plotly.newPlot(els.plot,[],{
+  paper_bgcolor:_cv('--plot-paper'),plot_bgcolor:_cv('--plot-bg'),
+  font:{family:'IBM Plex Sans, sans-serif',color:_cv('--plot-muted')},
+  xaxis:{showgrid:true,gridcolor:_cv('--plot-grid'),zeroline:false,showline:true,linecolor:_cv('--plot-line')},
+  yaxis:{showgrid:true,gridcolor:_cv('--plot-grid'),zeroline:false,showline:true,linecolor:_cv('--plot-line')},
+  margin:{l:65,r:30,t:55,b:60},autosize:true,
+  annotations:[{text:'Add files in the Files tab to begin',x:0.5,y:0.5,xref:'paper',yref:'paper',
+    showarrow:false,font:{size:13,color:_cv('--plot-muted')}}]
+},{responsive:true,displaylogo:false});
+</script>
 </body>
 </html>
