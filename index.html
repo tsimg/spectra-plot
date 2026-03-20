@@ -292,6 +292,10 @@
   <span class="topbar-status" id="statusBar">Ready. Add files in the Files tab to begin.</span>
   <button class="topbar-btn" id="themeToggleBtn">☀ Light</button>
   <button class="topbar-btn" id="replotBtn">↺ Replot</button>
+  <div class="topbar-sep"></div>
+  <button class="topbar-btn" id="saveSessionBtn">↓ Save session</button>
+  <label class="topbar-btn" id="loadSessionLabel" style="cursor:pointer;display:flex;align-items:center;">↑ Load session<input id="loadSessionInput" type="file" accept=".json" style="display:none;" /></label>
+  <div class="topbar-sep"></div>
   <button class="topbar-btn primary" id="savePlotBtn">↓ Save PNG</button>
 </div>
 
@@ -365,6 +369,7 @@
             <div class="range-info" id="xRangeInfo">Full range: —</div>
             <label class="check-row"><input id="hasHeader" type="checkbox" /> First remaining line is header</label>
             <label class="check-row"><input id="visible" type="checkbox" checked /> Show this trace</label>
+            <label class="check-row"><input id="rightAxis" type="checkbox" /> Plot on right Y-axis</label>
             <div class="btn-row">
               <button class="sb-btn" id="useFullRangeBtn" disabled>Full range</button>
               <button class="sb-btn" id="previewBtn" disabled>Preview</button>
@@ -393,7 +398,8 @@
           <div class="sb-sec-body">
             <div class="form-row"><label>Plot title</label><input id="plotTitle" type="text" value="Spectra viewer" /></div>
             <div class="form-row"><label>X-axis label</label><input id="xAxisLabel" type="text" value="Wavelength" /></div>
-            <div class="form-row"><label>Y-axis label</label><input id="yAxisLabel" type="text" value="Intensity" /></div>
+            <div class="form-row"><label>Left Y-axis label</label><input id="yAxisLabel" type="text" value="Intensity" /></div>
+            <div class="form-row"><label>Right Y-axis label</label><input id="yAxisLabelRight" type="text" value="Intensity" /></div>
           </div>
         </div>
 
@@ -525,6 +531,8 @@ const els = {
   intensityCol:     document.getElementById('intensityCol'),
   hasHeader:        document.getElementById('hasHeader'),
   visible:          document.getElementById('visible'),
+  rightAxis:        document.getElementById('rightAxis'),
+  yAxisLabelRight:  document.getElementById('yAxisLabelRight'),
   xMin:             document.getElementById('xMin'),
   xMax:             document.getElementById('xMax'),
   xRangeInfo:       document.getElementById('xRangeInfo'),
@@ -553,6 +561,8 @@ const els = {
   collapseBtn:      document.getElementById('collapseBtn'),
   resizeHandle:     document.getElementById('resizeHandle'),
   savePlotBtn:      document.getElementById('savePlotBtn'),
+  saveSessionBtn:   document.getElementById('saveSessionBtn'),
+  loadSessionInput: document.getElementById('loadSessionInput'),
   replotBtn:        document.getElementById('replotBtn'),
   themeToggleBtn:   document.getElementById('themeToggleBtn'),
   normaliseBtn:     document.getElementById('normaliseBtn'),
@@ -954,7 +964,7 @@ function applyActive() {
   const f=getActive(); if(!f) return;
   f.traceName=(els.traceName.value||f.name).trim()||f.name;
   f.skipRows=Math.max(0,Number(els.skipRows.value||0));
-  f.delimiter=els.delimiter.value;f.hasHeader=els.hasHeader.checked;f.visible=els.visible.checked;
+  f.delimiter=els.delimiter.value;f.hasHeader=els.hasHeader.checked;f.visible=els.visible.checked;f.rightAxis=els.rightAxis.checked;
   const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
   fillSel(els.wavelengthCol,t.columns,els.wavelengthCol.value);
   fillSel(els.intensityCol, t.columns,els.intensityCol.value);
@@ -1057,9 +1067,14 @@ function plotAll(){
       mode:state.showMarkers?'lines+markers':'lines',
       name:f.traceName||f.name,
       line:{width:lw},marker:{size:5},type:'scatter',
+      yaxis:f.rightAxis?'y2':'y',
     });
     plotted++;
   }
+
+  const hasRightAxis=state.files.some(f=>f.visible&&f.rightAxis);
+  // Scale right margin with font size so the label always fits
+  const rightMargin=hasRightAxis?Math.max(70, axisSz*4+30):30;
 
   applyAspectRatio(els.aspectRatio.value);
 
@@ -1072,7 +1087,7 @@ function plotAll(){
       tickfont:{size:tickSz},zeroline:false,
       type:state.logX?'log':'linear',
       showline:true,linecolor:plotLine,linewidth:1,
-      gridcolor:plotGrid,mirror:state.showFrame?'allticks':false,
+      gridcolor:plotGrid,mirror:state.showFrame?(hasRightAxis?false:'allticks'):false,
       ticks:'outside',tickcolor:plotLine,
     },
     yaxis:{
@@ -1080,13 +1095,41 @@ function plotAll(){
       tickfont:{size:tickSz},zeroline:false,
       type:state.logY?'log':'linear',
       showline:true,linecolor:plotLine,linewidth:1,
-      gridcolor:plotGrid,mirror:state.showFrame?'allticks':false,
+      gridcolor:plotGrid,
+      mirror:state.showFrame&&!hasRightAxis?'allticks':false,
       ticks:'outside',tickcolor:plotLine,
     },
+    yaxis2:hasRightAxis?{
+      title:{text:''},  // suppressed — drawn as annotation so we can rotate it
+      tickfont:{size:tickSz},zeroline:false,
+      type:state.logY?'log':'linear',
+      showline:true,linecolor:plotLine,linewidth:1,
+      gridcolor:'rgba(0,0,0,0)',
+      ticks:'outside',tickcolor:plotLine,
+      overlaying:'y',side:'right',
+    }:undefined,
     legend:{...legPos(els.legendPosition.value),font:{size:legSz},bgcolor:plotLegBg,bordercolor:plotLine,borderwidth:1},
-    margin:{l:65,r:30,t:55,b:60},
+    margin:{l:65,r:rightMargin,t:55,b:60},
     hovermode:'closest',autosize:true,
   };
+  if(!hasRightAxis) delete layout.yaxis2;
+
+  // Add right-axis label as a rotated annotation (top-to-bottom, i.e. 90 degrees)
+  // x is expressed in paper coords; we push it into the right margin by a fixed
+  // fraction derived from the margin itself so it stays inside the image.
+  if(hasRightAxis){
+    const rightLabel=state.normalise?'Normalised intensity (0–1)':(els.yAxisLabelRight.value||'Intensity');
+    layout.annotations=[{
+      text:rightLabel,
+      font:{size:axisSz,color:plotFont},
+      xref:'paper', x:1,
+      xshift:rightMargin-axisSz*1.5-8,
+      yref:'paper', y:0.5,
+      xanchor:'center', yanchor:'middle',
+      showarrow:false,
+      textangle:90,
+    }];
+  }
 
   if(!state.logX&&pxMn!==null&&pxMx!==null){
     const r=expandRange(pxMn,pxMx);if(r)layout.xaxis.range=r;
@@ -1123,7 +1166,7 @@ async function handleFiles(list){
       wavelengthCol:parsed.columns[0]||null,
       intensityCol:parsed.columns[1]||parsed.columns[0]||null,
       traceName:f.name.replace(/\.[^.]+$/,''),
-      visible:true,xMin:null,xMax:null,
+      visible:true,rightAxis:false,xMin:null,xMax:null,
     });
   }
   if(state.activeIndex<0&&state.files.length>0) state.activeIndex=0;
@@ -1173,8 +1216,132 @@ els.savePlotBtn.addEventListener('click',async()=>{
   catch{setStatus('Failed to save plot image.');}
 });
 
+// ── Save session ──
+els.saveSessionBtn.addEventListener('click', () => {
+  const session = {
+    version: 1,
+    // Serialise all file data (text content + all per-file settings)
+    files: state.files.map(f => ({
+      name:         f.name,
+      text:         f.text,
+      traceName:    f.traceName,
+      skipRows:     f.skipRows,
+      delimiter:    f.delimiter,
+      hasHeader:    f.hasHeader,
+      visible:      f.visible,
+      rightAxis:    f.rightAxis || false,
+      wavelengthCol:f.wavelengthCol,
+      intensityCol: f.intensityCol,
+      xMin:         f.xMin,
+      xMax:         f.xMax,
+    })),
+    activeIndex: state.activeIndex,
+    // All toggle states
+    normalise:      state.normalise,
+    showMarkers:    state.showMarkers,
+    showFrame:      state.showFrame,
+    logX:           state.logX,
+    logY:           state.logY,
+    useGlobalXTrim: state.useGlobalXTrim,
+    theme:          state.theme,
+    // All plot option inputs
+    plotTitle:      els.plotTitle.value,
+    xAxisLabel:     els.xAxisLabel.value,
+    yAxisLabel:     els.yAxisLabel.value,
+    yAxisLabelRight:els.yAxisLabelRight.value,
+    titleFontSize:  els.titleFontSize.value,
+    axisFontSize:   els.axisFontSize.value,
+    tickFontSize:   els.tickFontSize.value,
+    legendFontSize: els.legendFontSize.value,
+    lineWidth:      els.lineWidth.value,
+    legendPosition: els.legendPosition.value,
+    globalXMin:     els.globalXMin.value,
+    globalXMax:     els.globalXMax.value,
+    aspectRatio:    els.aspectRatio.value,
+    exportScale:    els.exportScale.value,
+  };
+  const blob = new Blob([JSON.stringify(session, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fn = (els.plotTitle.value || 'spectra_viewer').trim().replace(/\s+/g,'_') || 'spectra_viewer';
+  a.href = url; a.download = fn + '_session.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus('Session saved.');
+});
+
+// ── Load session ──
+els.loadSessionInput.addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const text = await file.text();
+    const session = JSON.parse(text);
+    if (!session.version || !Array.isArray(session.files))
+      throw new Error('Unrecognised session file format.');
+
+    // Restore files array
+    state.files = session.files.map(f => ({
+      name:         f.name,
+      text:         f.text,
+      traceName:    f.traceName || f.name,
+      skipRows:     f.skipRows  ?? 0,
+      delimiter:    f.delimiter || 'Auto',
+      hasHeader:    f.hasHeader || false,
+      visible:      f.visible   ?? true,
+      rightAxis:    f.rightAxis || false,
+      wavelengthCol:f.wavelengthCol || null,
+      intensityCol: f.intensityCol  || null,
+      xMin:         f.xMin ?? null,
+      xMax:         f.xMax ?? null,
+    }));
+    state.activeIndex = session.activeIndex ?? (state.files.length ? 0 : -1);
+
+    // Restore toggle states
+    const toggleMap = {
+      normalise:      els.normaliseBtn,
+      showMarkers:    els.showMarkersBtn,
+      showFrame:      els.showFrameBtn,
+      logX:           els.logXBtn,
+      logY:           els.logYBtn,
+      useGlobalXTrim: els.useGlobalXTrimBtn,
+    };
+    for (const [key, btn] of Object.entries(toggleMap)) {
+      state[key] = session[key] || false;
+      btn.classList.toggle('on', state[key]);
+    }
+
+    // Restore plot option inputs
+    els.plotTitle.value       = session.plotTitle       || 'Spectra viewer';
+    els.xAxisLabel.value      = session.xAxisLabel      || 'Wavelength';
+    els.yAxisLabel.value      = session.yAxisLabel      || 'Intensity';
+    els.yAxisLabelRight.value = session.yAxisLabelRight || 'Intensity';
+    els.titleFontSize.value   = session.titleFontSize   || 15;
+    els.axisFontSize.value    = session.axisFontSize    || 12;
+    els.tickFontSize.value    = session.tickFontSize    || 11;
+    els.legendFontSize.value  = session.legendFontSize  || 11;
+    els.lineWidth.value       = session.lineWidth       || 2;
+    els.legendPosition.value  = session.legendPosition  || 'top right';
+    els.globalXMin.value      = session.globalXMin      || '';
+    els.globalXMax.value      = session.globalXMax      || '';
+    els.aspectRatio.value     = session.aspectRatio     || 'free';
+    els.exportScale.value     = session.exportScale     || 2;
+
+    // Restore theme (calls plotAll internally)
+    applyTheme(session.theme || 'light');
+
+    // Refresh UI
+    refreshFileList();
+    loadActive();
+    plotAll();
+    setStatus(`Session loaded: ${state.files.length} file(s) restored.`);
+  } catch(err) {
+    setStatus('Failed to load session: ' + err.message);
+  }
+  els.loadSessionInput.value = ''; // reset so the same file can be re-loaded
+});
+
 // Live-update from plot options
-[els.plotTitle,els.xAxisLabel,els.yAxisLabel,els.legendPosition,
+[els.plotTitle,els.xAxisLabel,els.yAxisLabel,els.yAxisLabelRight,els.legendPosition,
  els.lineWidth,els.globalXMin,els.globalXMax,els.aspectRatio,els.exportScale,
  els.titleFontSize,els.axisFontSize,els.tickFontSize,els.legendFontSize,
 ].forEach(el=>{
