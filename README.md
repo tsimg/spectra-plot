@@ -4,6 +4,7 @@ A self-contained, browser-based tool for loading, overlaying, and formatting mul
 
 Built with [Plotly.js](https://plotly.com/javascript/).
 
+Georgios Tsiminis, 2026.
 ---
 
 ## Getting started
