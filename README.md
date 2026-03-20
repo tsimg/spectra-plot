@@ -2,9 +2,8 @@
 
 A self-contained, browser-based tool for loading, overlaying, and formatting multiple spectra files for visual inspection and publication-quality export. No installation, no backend, no dependencies to manage — open the HTML file directly in any modern browser, or host it as a static page (e.g. GitHub Pages).
 
-Built with [Plotly.js](https://plotly.com/javascript/).
+Built with [Plotly.js](https://plotly.com/javascript/) by Georgios Tsiminis 2026.
 
-Georgios Tsiminis, 2026.
 ---
 
 ## Getting started
