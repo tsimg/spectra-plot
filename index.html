@@ -212,6 +212,19 @@
       background: var(--muted); border-radius: 1px;
     }
     .file-item-content { flex: 1; min-width: 0; }
+
+    /* Colour swatch */
+    .colour-swatch {
+      flex-shrink: 0; width: 14px; height: 14px; margin-top: 2px;
+      border-radius: 3px; border: 1px solid var(--border-hi);
+      cursor: pointer; transition: border-color 0.15s;
+      position: relative; overflow: hidden;
+    }
+    .colour-swatch:hover { border-color: var(--accent); }
+    .colour-swatch input[type="color"] {
+      position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px);
+      opacity: 0; cursor: pointer; padding: 0; border: none;
+    }
     .file-item-name {
       font-size: 12px; font-weight: 500; color: var(--text);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -792,6 +805,23 @@ function refreshFileList() {
     // Dragging must start from the handle
     handle.addEventListener('mousedown', ()=>{ d.draggable=true; });
 
+    // ── Colour swatch ──
+    const swatch=document.createElement('div');
+    swatch.className='colour-swatch';
+    swatch.title='Click to change trace colour';
+    swatch.style.background=f.color||'transparent';
+    const colorPicker=document.createElement('input');
+    colorPicker.type='color';
+    colorPicker.value=f.color||'#4f8ef7';
+    colorPicker.addEventListener('input', e=>{
+      e.stopPropagation();
+      f.color=e.target.value;
+      swatch.style.background=e.target.value;
+      plotAll();
+    });
+    colorPicker.addEventListener('click', e=>e.stopPropagation());
+    swatch.appendChild(colorPicker);
+
     // ── Content wrapper ──
     const content=document.createElement('div');
     content.className='file-item-content';
@@ -910,6 +940,7 @@ function refreshFileList() {
     });
 
     d.appendChild(handle);
+    d.appendChild(swatch);
     d.appendChild(content);
     els.fileList.appendChild(d);
   });
@@ -1062,11 +1093,14 @@ function plotAll(){
     const txmn=Math.min(...tr.x),txmx=Math.max(...tr.x);
     pxMn=pxMn===null?txmn:Math.min(pxMn,txmn);
     pxMx=pxMx===null?txmx:Math.max(pxMx,txmx);
+    const traceColor=f.color||undefined;
     traces.push({
       x:tr.x,y:state.normalise?norm01(tr.y):tr.y,
       mode:state.showMarkers?'lines+markers':'lines',
       name:f.traceName||f.name,
-      line:{width:lw},marker:{size:5},type:'scatter',
+      line:{width:lw,color:traceColor},
+      marker:{size:5,color:traceColor},
+      type:'scatter',
       yaxis:f.rightAxis?'y2':'y',
     });
     plotted++;
@@ -1145,6 +1179,37 @@ function plotAll(){
     },
   });
 
+  // Sync Plotly's auto-assigned colours back to swatches for any trace without a user colour
+  // We do this after newPlot so Plotly has resolved its default colour cycle
+  requestAnimationFrame(()=>{
+    const plotData = els.plot.data || [];
+    let traceIdx = 0;
+    state.files.forEach(f=>{
+      if(!f.visible) return;
+      const pd = plotData[traceIdx];
+      if(pd && !f.color){
+        // Read the resolved colour from the rendered trace
+        const resolvedColor = pd.line && pd.line.color ? pd.line.color : null;
+        if(resolvedColor){
+          // Update all swatches for this file
+          const swatches = els.fileList.querySelectorAll('.colour-swatch input[type="color"]');
+          const visibleFiles = state.files.map((ff,ii)=>({ff,ii})).filter(({ff})=>ff.visible);
+          const entry = visibleFiles[traceIdx];
+          if(entry){
+            const swatch = els.fileList.children[entry.ii];
+            if(swatch){
+              const picker = swatch.querySelector('.colour-swatch input[type="color"]');
+              const swatchDiv = swatch.querySelector('.colour-swatch');
+              if(picker) picker.value = resolvedColor;
+              if(swatchDiv) swatchDiv.style.background = resolvedColor;
+            }
+          }
+        }
+      }
+      traceIdx++;
+    });
+  });
+
   if(state.useGlobalXTrim&&gxMn===null&&gxMx===null){
     setStatus('Global X trim on — enter min/max to apply.');
   } else {
@@ -1166,7 +1231,7 @@ async function handleFiles(list){
       wavelengthCol:parsed.columns[0]||null,
       intensityCol:parsed.columns[1]||parsed.columns[0]||null,
       traceName:f.name.replace(/\.[^.]+$/,''),
-      visible:true,rightAxis:false,xMin:null,xMax:null,
+      visible:true,rightAxis:false,color:null,xMin:null,xMax:null,
     });
   }
   if(state.activeIndex<0&&state.files.length>0) state.activeIndex=0;
@@ -1234,6 +1299,7 @@ els.saveSessionBtn.addEventListener('click', () => {
       intensityCol: f.intensityCol,
       xMin:         f.xMin,
       xMax:         f.xMax,
+      color:        f.color || null,
     })),
     activeIndex: state.activeIndex,
     // All toggle states
@@ -1293,6 +1359,7 @@ els.loadSessionInput.addEventListener('change', async e => {
       intensityCol: f.intensityCol  || null,
       xMin:         f.xMin ?? null,
       xMax:         f.xMax ?? null,
+      color:        f.color || null,
     }));
     state.activeIndex = session.activeIndex ?? (state.files.length ? 0 : -1);
 
