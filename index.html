@@ -433,8 +433,15 @@
           <div class="sb-sec-body">
             <div class="form-row"><label>Line width</label><input id="lineWidth" type="number" min="1" max="8" value="2" /></div>
             <div class="tog-grid" style="margin-top:6px;">
-              <button class="tog" id="normaliseBtn">Normalise</button>
+              <button class="tog" id="normaliseBtn">Normalise 0–1</button>
               <button class="tog" id="showMarkersBtn">Markers</button>
+              <button class="tog" id="normalisePointBtn">Normalise to point</button>
+            </div>
+            <div id="normalisePointRow" style="display:none;margin-top:8px;">
+              <div class="form-row">
+                <label>Reference wavelength</label>
+                <input id="normalisePointVal" type="number" step="any" placeholder="e.g. 532" />
+              </div>
             </div>
           </div>
         </div>
@@ -527,7 +534,7 @@
 // ══════════════════════════════════════════
 const state = {
   files: [], activeIndex: -1, theme: 'dark',
-  normalise: false, showMarkers: false, showFrame: false,
+  normalise: false, normalisePoint: false, showMarkers: false, showFrame: false,
   logX: false, logY: false, useGlobalXTrim: false,
 };
 
@@ -578,7 +585,10 @@ const els = {
   loadSessionInput: document.getElementById('loadSessionInput'),
   replotBtn:        document.getElementById('replotBtn'),
   themeToggleBtn:   document.getElementById('themeToggleBtn'),
-  normaliseBtn:     document.getElementById('normaliseBtn'),
+  normaliseBtn:          document.getElementById('normaliseBtn'),
+  normalisePointBtn:     document.getElementById('normalisePointBtn'),
+  normalisePointVal:     document.getElementById('normalisePointVal'),
+  normalisePointRow:     document.getElementById('normalisePointRow'),
   showMarkersBtn:   document.getElementById('showMarkersBtn'),
   showFrameBtn:     document.getElementById('showFrameBtn'),
   logXBtn:          document.getElementById('logXBtn'),
@@ -651,7 +661,25 @@ function setupToggle(btn, key, onToggle) {
     plotAll();
   });
 }
-setupToggle(els.normaliseBtn,      'normalise');
+setupToggle(els.normaliseBtn, 'normalise', on => {
+  if(on && state.normalisePoint){
+    state.normalisePoint = false;
+    els.normalisePointBtn.classList.remove('on');
+    els.normalisePointRow.style.display = 'none';
+  }
+});
+els.normalisePointBtn.addEventListener('click', () => {
+  state.normalisePoint = !state.normalisePoint;
+  els.normalisePointBtn.classList.toggle('on', state.normalisePoint);
+  els.normalisePointRow.style.display = state.normalisePoint ? 'block' : 'none';
+  if(state.normalisePoint && state.normalise){
+    state.normalise = false;
+    els.normaliseBtn.classList.remove('on');
+  }
+  plotAll();
+});
+els.normalisePointVal.addEventListener('input',  plotAll);
+els.normalisePointVal.addEventListener('change', plotAll);
 setupToggle(els.showMarkersBtn,    'showMarkers');
 setupToggle(els.showFrameBtn,      'showFrame');
 setupToggle(els.logXBtn,           'logX');
@@ -686,6 +714,18 @@ function norm01(vals) {
   if (!vals.length) return [];
   const mn=Math.min(...vals), mx=Math.max(...vals);
   return mn===mx ? vals.map(()=>0) : vals.map(v=>(v-mn)/(mx-mn));
+}
+
+function normToPoint(x, vals, refX) {
+  // Find index of nearest X to refX
+  let bestIdx=0, bestDist=Infinity;
+  for(let i=0;i<x.length;i++){
+    const d=Math.abs(x[i]-refX);
+    if(d<bestDist){bestDist=d;bestIdx=i;}
+  }
+  const refVal=vals[bestIdx];
+  if(refVal===0) return vals.slice(); // avoid divide-by-zero
+  return vals.map(v=>v/refVal);
 }
 
 // ══════════════════════════════════════════
@@ -1094,8 +1134,12 @@ function plotAll(){
     pxMn=pxMn===null?txmn:Math.min(pxMn,txmn);
     pxMx=pxMx===null?txmx:Math.max(pxMx,txmx);
     const traceColor=f.color||undefined;
+    const refX=parseNum(els.normalisePointVal.value);
+    let traceY=tr.y;
+    if(state.normalise) traceY=norm01(tr.y);
+    else if(state.normalisePoint && refX!==null) traceY=normToPoint(tr.x,tr.y,refX);
     traces.push({
-      x:tr.x,y:state.normalise?norm01(tr.y):tr.y,
+      x:tr.x,y:traceY,
       mode:state.showMarkers?'lines+markers':'lines',
       name:f.traceName||f.name,
       line:{width:lw,color:traceColor},
@@ -1125,7 +1169,7 @@ function plotAll(){
       ticks:'outside',tickcolor:plotLine,
     },
     yaxis:{
-      title:{text:state.normalise?'Normalised intensity (0–1)':(els.yAxisLabel.value||'Intensity'),font:{size:axisSz}},
+      title:{text:state.normalise?'Normalised intensity (0–1)':state.normalisePoint?'Normalised intensity':(els.yAxisLabel.value||'Intensity'),font:{size:axisSz}},
       tickfont:{size:tickSz},zeroline:false,
       type:state.logY?'log':'linear',
       showline:true,linecolor:plotLine,linewidth:1,
@@ -1152,7 +1196,7 @@ function plotAll(){
   // x is expressed in paper coords; we push it into the right margin by a fixed
   // fraction derived from the margin itself so it stays inside the image.
   if(hasRightAxis){
-    const rightLabel=state.normalise?'Normalised intensity (0–1)':(els.yAxisLabelRight.value||'Intensity');
+    const rightLabel=state.normalise?'Normalised intensity (0–1)':state.normalisePoint?'Normalised intensity':(els.yAxisLabelRight.value||'Intensity');
     layout.annotations=[{
       text:rightLabel,
       font:{size:axisSz,color:plotFont},
@@ -1303,7 +1347,9 @@ els.saveSessionBtn.addEventListener('click', () => {
     })),
     activeIndex: state.activeIndex,
     // All toggle states
-    normalise:      state.normalise,
+    normalise:         state.normalise,
+    normalisePoint:    state.normalisePoint,
+    normalisePointVal: els.normalisePointVal.value,
     showMarkers:    state.showMarkers,
     showFrame:      state.showFrame,
     logX:           state.logX,
@@ -1377,6 +1423,12 @@ els.loadSessionInput.addEventListener('change', async e => {
       btn.classList.toggle('on', state[key]);
     }
 
+    // Restore normalisePoint (has associated input + visibility)
+    state.normalisePoint = session.normalisePoint || false;
+    els.normalisePointBtn.classList.toggle('on', state.normalisePoint);
+    els.normalisePointVal.value = session.normalisePointVal || '';
+    els.normalisePointRow.style.display = state.normalisePoint ? 'block' : 'none';
+
     // Restore plot option inputs
     els.plotTitle.value       = session.plotTitle       || 'Spectra viewer';
     els.xAxisLabel.value      = session.xAxisLabel      || 'Wavelength';
@@ -1420,7 +1472,10 @@ els.loadSessionInput.addEventListener('change', async e => {
 // ══════════════════════════════════════════
 // Init
 // ══════════════════════════════════════════
-applyTheme('light');
+// Init: set theme attribute first WITHOUT calling plotAll, then do the initial plot
+document.documentElement.setAttribute('data-theme','light');
+state.theme='light';
+els.themeToggleBtn.textContent='🌙 Dark';
 applyAspectRatio('free');
 const _cs=getComputedStyle(document.documentElement),_cv=k=>_cs.getPropertyValue(k).trim();
 Plotly.newPlot(els.plot,[],{
