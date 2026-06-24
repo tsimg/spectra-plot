@@ -8,9 +8,9 @@ Built with [Plotly.js](https://plotly.com/javascript/) by Georgios Tsiminis 2026
 
 ## Getting started
 
-Download `spectra_viewer.html` and open it in your browser. That's it. No server required.
+Run it from your browser window by clicking on https://tsimg.github.io/spectra-plot/. 
 
-Alternatively, host it on GitHub Pages by placing the file in your repository and enabling Pages in the repository settings.
+OR, download `index.html` and open it in your browser. That's it. No server required.
 
 ---
 
