@@ -10,7 +10,7 @@ Built with [Plotly.js](https://plotly.com/javascript/) by Georgios Tsiminis 2026
 
 Run it from your browser window by clicking on https://tsimg.github.io/spectra-plot/. 
 
-OR, download `index.html` and open it in your browser. That's it. No server required.
+OR, download `index.html` and open it in your browser.
 
 ---
 
