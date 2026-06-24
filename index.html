@@ -295,6 +295,47 @@
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+
+    /* ── Process tab ── */
+    .proc-label {
+      font-size: 9px; color: var(--muted); letter-spacing: 0.07em;
+      text-transform: uppercase; font-weight: 600; margin: 8px 0 5px;
+    }
+    .roi-item {
+      display: flex; align-items: center; gap: 4px; margin-bottom: 6px;
+    }
+    .roi-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    input.roi-name { flex: 2; min-width: 0; font-size: 11px; }
+    input.roi-x1, input.roi-x2 { width: 56px; flex-shrink: 0; font-size: 11px; }
+    .roi-sep { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+    .roi-del {
+      flex-shrink: 0; width: 22px; height: 22px; padding: 0;
+      background: transparent; border: 1px solid var(--border);
+      border-radius: var(--radius); cursor: pointer;
+      color: var(--muted); font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .roi-del:hover { border-color: var(--accent); color: var(--accent); }
+    .int-wrap { overflow-x: auto; margin-top: 8px; }
+    .int-table { width: 100%; border-collapse: collapse; font-size: 10px; font-family: var(--mono); }
+    .int-table th, .int-table td {
+      padding: 4px 6px; text-align: right;
+      border: 1px solid var(--border); white-space: nowrap;
+    }
+    .int-table th {
+      color: var(--muted); font-weight: 500;
+      background: var(--surface2); font-size: 9px;
+    }
+    .int-table td:first-child, .int-table th:first-child {
+      text-align: left; max-width: 100px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .int-table tr:hover td { background: var(--surface2); }
+    .int-table .total-row td { font-weight: 500; border-top: 2px solid var(--border-hi); }
+    #plot.pick-active { cursor: crosshair; }
   </style>
 </head>
 <body>
@@ -309,6 +350,7 @@
   <button class="topbar-btn" id="saveSessionBtn">↓ Save session</button>
   <label class="topbar-btn" id="loadSessionLabel" style="cursor:pointer;display:flex;align-items:center;">↑ Load session<input id="loadSessionInput" type="file" accept=".json" style="display:none;" /></label>
   <div class="topbar-sep"></div>
+  <button class="topbar-btn" id="saveDataBtn">↓ Save data CSV</button>
   <button class="topbar-btn primary" id="savePlotBtn">↓ Save PNG</button>
 </div>
 
@@ -322,6 +364,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="tab-files">Files</button>
       <button class="tab-btn" data-tab="tab-plot">Plot options</button>
+      <button class="tab-btn" data-tab="tab-process">Process</button>
     </div>
 
     <!-- FILES tab -->
@@ -517,6 +560,217 @@
 
       </div>
     </div>
+
+    <!-- PROCESS tab -->
+    <div class="tab-panel" id="tab-process">
+      <div class="tab-scroll">
+
+        <!-- ── Background subtraction ── -->
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-bg">Linear background <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+
+            <div class="proc-label">Anchor points (nm)</div>
+            <div class="grid2">
+              <div class="form-row">
+                <label>λ₁</label>
+                <input id="bgX1" type="number" step="any" placeholder="e.g. 700" />
+              </div>
+              <div class="form-row">
+                <label>λ₂</label>
+                <input id="bgX2" type="number" step="any" placeholder="e.g. 960" />
+              </div>
+            </div>
+
+            <div id="bgPickStatus" class="range-info" style="min-height:16px">No background region set.</div>
+
+            <div class="btn-row" style="margin-bottom:8px">
+              <button class="sb-btn" id="bgPickBtn">⊕ Pick from plot</button>
+              <button class="sb-btn" id="bgClearBtn">Clear</button>
+            </div>
+
+            <label class="check-row" style="margin-bottom:8px">
+              <input id="bgClipNeg" type="checkbox" checked /> Clip result to zero
+            </label>
+
+            <div class="proc-label">Show on plot</div>
+            <div class="tog-grid">
+              <button class="tog on" id="bgShowRegionBtn">Region</button>
+              <button class="tog on" id="bgShowOrigBtn">Original</button>
+              <button class="tog"    id="bgShowBgLineBtn">Bg line</button>
+              <button class="tog"    id="bgShowSubBtn">Subtracted</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Exponential background ── -->
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-exp">Exponential background <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+
+            <div class="proc-label">Fit mode</div>
+            <div class="tog-grid" style="margin-bottom:8px">
+              <button class="tog on" id="expFitFreeBtn">Free (A, b)</button>
+              <button class="tog"    id="expFitAnchoredBtn">Anchored (A = y₀)</button>
+            </div>
+
+            <div class="proc-label">Fitting window (nm)</div>
+            <div class="grid2">
+              <div class="form-row">
+                <label>λ start</label>
+                <input id="expX1" type="number" step="any" placeholder="e.g. 760" />
+              </div>
+              <div class="form-row">
+                <label>λ end</label>
+                <input id="expX2" type="number" step="any" placeholder="e.g. 1000" />
+              </div>
+            </div>
+
+            <div id="expPickStatus" class="range-info" style="min-height:16px">No fitting window set.</div>
+
+            <div class="btn-row" style="margin-bottom:8px">
+              <button class="sb-btn" id="expPickBtn">⊕ Pick from plot</button>
+              <button class="sb-btn" id="expClearBtn">Clear</button>
+            </div>
+
+            <label class="check-row" style="margin-bottom:8px">
+              <input id="expClipNeg" type="checkbox" checked /> Clip result to zero
+            </label>
+
+            <label class="check-row" style="margin-bottom:8px">
+              <input id="expChainLinear" type="checkbox" /> Chain from linear background
+            </label>
+
+            <div class="proc-label">Show on plot</div>
+            <div class="tog-grid">
+              <button class="tog on" id="expShowRegionBtn">Region</button>
+              <button class="tog"    id="expShowFitBtn">Exp fit</button>
+              <button class="tog"    id="expShowSubBtn">Subtracted</button>
+            </div>
+
+            <div id="expFitStatus" class="range-info" style="margin-top:6px;min-height:14px"></div>
+
+          </div>
+        </div>
+
+        <!-- ── Reference subtraction ── -->
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-ref">Reference subtraction <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+
+            <div class="proc-label">Reference spectrum</div>
+            <div class="tog-grid" style="margin-bottom:8px">
+              <button class="tog on" id="refModeTraceBtn">Loaded trace</button>
+              <button class="tog"    id="refModeFileBtn">Load file</button>
+            </div>
+            <div id="refTraceRow" class="form-row" style="margin-bottom:8px">
+              <label>Select trace</label>
+              <select id="refTraceSelect"><option value="-1">— select reference —</option></select>
+            </div>
+            <div id="refFileRow" style="display:none;margin-bottom:8px">
+              <label class="sb-btn" style="cursor:pointer;display:block;text-align:center;">
+                ↑ Load reference file
+                <input id="refFileInput" type="file" accept=".txt,.csv,.tsv,.dat,text/plain" style="display:none;" />
+              </label>
+              <div id="refFileName" class="range-info" style="margin-top:4px;min-height:14px"></div>
+            </div>
+
+            <div class="proc-label">Scale method</div>
+            <div class="tog-grid" style="margin-bottom:6px">
+              <button class="tog on" id="refScalePointBtn">Single point</button>
+              <button class="tog"    id="refScaleWindowBtn">Window (OLS)</button>
+            </div>
+            <div id="refScalePointInputRow">
+              <div class="form-row" style="margin-bottom:4px">
+                <label>λ normalise (nm)</label>
+                <input id="refScalePoint" type="number" step="any" value="800" />
+              </div>
+            </div>
+            <div id="refScaleWindowInputRow" style="display:none">
+              <div class="grid2">
+                <div class="form-row"><label>λ start</label><input id="refScaleX1" type="number" step="any" placeholder="e.g. 750" /></div>
+                <div class="form-row"><label>λ end</label><input id="refScaleX2" type="number" step="any" placeholder="e.g. 820" /></div>
+              </div>
+            </div>
+            <div id="refScalePickStatus" class="range-info" style="min-height:16px">Normalise at 800 nm.</div>
+            <div class="btn-row" style="margin-bottom:8px">
+              <button class="sb-btn" id="refScalePickBtn">⊕ Pick from plot</button>
+              <button class="sb-btn" id="refScaleClearBtn">Reset</button>
+            </div>
+
+            <div class="proc-label">Subtraction range</div>
+            <div class="tog-grid" style="margin-bottom:6px">
+              <button class="tog on" id="refSubFullBtn">Full range</button>
+              <button class="tog"    id="refSubWindowBtn">Window</button>
+            </div>
+            <div id="refSubWindowRow" style="display:none">
+              <div class="grid2">
+                <div class="form-row"><label>λ start</label><input id="refSubX1" type="number" step="any" /></div>
+                <div class="form-row"><label>λ end</label><input id="refSubX2" type="number" step="any" /></div>
+              </div>
+              <div id="refSubPickStatus" class="range-info" style="min-height:16px">No sub window set.</div>
+              <div class="btn-row" style="margin-bottom:8px">
+                <button class="sb-btn" id="refSubPickBtn">⊕ Pick from plot</button>
+                <button class="sb-btn" id="refSubClearBtn">Clear</button>
+              </div>
+            </div>
+
+            <label class="check-row" style="margin-bottom:5px">
+              <input id="refChainLinear" type="checkbox" /> Chain from linear background
+            </label>
+            <label class="check-row" style="margin-bottom:8px">
+              <input id="refClipNeg" type="checkbox" checked /> Clip result to zero
+            </label>
+
+            <div class="proc-label">Show on plot</div>
+            <div class="tog-grid">
+              <button class="tog" id="refShowRefBtn">Reference</button>
+              <button class="tog" id="refShowScaledBtn">Scaled ref</button>
+              <button class="tog" id="refShowSubBtn">Subtracted</button>
+            </div>
+            <div id="refStatus" class="range-info" style="margin-top:6px;min-height:14px"></div>
+
+          </div>
+        </div>
+
+        <!-- ── Regions of interest ── -->
+        <div class="sb-sec">
+          <div class="sb-sec-hdr" data-sec="sec-roi">Regions of interest <span class="chev">▾</span></div>
+          <div class="sb-sec-body">
+
+            <div id="roiList"></div>
+
+            <div class="btn-row" style="margin-top:2px">
+              <button class="sb-btn primary" id="addRoiBtn">+ Add ROI</button>
+              <button class="sb-btn" id="clearRoisBtn">Clear all</button>
+            </div>
+
+            <div style="border-top:1px solid var(--border);margin:10px 0 8px"></div>
+
+            <div class="proc-label">Integration method</div>
+            <div class="tog-grid" style="margin-bottom:8px">
+              <button class="tog on" id="roiMethodSumBtn">Sum (Σy)</button>
+              <button class="tog"    id="roiMethodTrapBtn">Area (trapezoid)</button>
+            </div>
+
+            <label class="check-row" style="margin-bottom:8px">
+              <input id="roiUseSub" type="checkbox" /> Use subtracted data (if available)
+            </label>
+
+            <div class="btn-row">
+              <button class="sb-btn primary" id="computeIntegralsBtn">Compute integrals</button>
+              <button class="sb-btn" id="exportIntegralsBtn" disabled>Export CSV</button>
+            </div>
+
+            <div id="integralsResult"></div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- Attribution -->
     <div class="sidebar-footer">Georgios Tsiminis, 2026 · <a href="https://github.com/tsimg/spectra-plot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">docs &amp; source ↗</a></div>
   </div>
@@ -536,6 +790,35 @@ const state = {
   files: [], activeIndex: -1, theme: 'dark',
   normalise: false, normalisePoint: false, showMarkers: false, showFrame: false,
   logX: false, logY: false, useGlobalXTrim: false,
+  // ── Process state ──
+  bgX1: null, bgX2: null,
+  bgPickMode: false, bgPickStep: 0, // 0=off, 1=awaiting λ₁, 2=awaiting λ₂
+  bgShowRegion: true, bgShowOrig: true, bgShowBgLine: false, bgShowSub: false,
+  bgClipNeg: true,
+  // ── Exponential background ──
+  expX1: null, expX2: null,
+  expPickMode: false, expPickStep: 0,
+  expFitMode: 'free',   // 'free' | 'anchored'
+  expShowRegion: true, expShowFit: false, expShowSub: false,
+  expClipNeg: true,
+  expChainLinear: false,  // if false, exp fits raw data; if true, fits linear-corrected data
+  // ── Reference subtraction ──
+  refMode: 'trace',       // 'trace' | 'file'
+  refTraceIdx: -1,
+  refFileData: null,      // {name, x, y}
+  refScaleMode: 'point',     // 'point' | 'window'
+  refScalePoint: 800,        // normalisation wavelength for point mode
+  refScaleX1: null, refScaleX2: null,
+  refSubMode: 'full',     // 'full' | 'window'
+  refSubX1: null, refSubX2: null,
+  refChainLinear: false,
+  refClipNeg: true,
+  refShowRef: false, refShowScaled: false, refShowSub: false,
+  refPickMode: false, refPickStep: 0, refPickTarget: 'scale', // 'scale'|'sub'
+  rois: [],          // [{id, name, x1, x2, colorIdx}]
+  lastIntegrals: null, // {headers, rows} for CSV export
+  _roiCounter: 0,    // monotone id counter
+  roiMethod: 'sum',  // 'sum' | 'trap'
 };
 
 const els = {
@@ -581,6 +864,7 @@ const els = {
   collapseBtn:      document.getElementById('collapseBtn'),
   resizeHandle:     document.getElementById('resizeHandle'),
   savePlotBtn:      document.getElementById('savePlotBtn'),
+  saveDataBtn:      document.getElementById('saveDataBtn'),
   saveSessionBtn:   document.getElementById('saveSessionBtn'),
   loadSessionInput: document.getElementById('loadSessionInput'),
   replotBtn:        document.getElementById('replotBtn'),
@@ -594,6 +878,72 @@ const els = {
   logXBtn:          document.getElementById('logXBtn'),
   logYBtn:          document.getElementById('logYBtn'),
   useGlobalXTrimBtn:document.getElementById('useGlobalXTrimBtn'),
+  // ── Process ──
+  bgX1:              document.getElementById('bgX1'),
+  bgX2:              document.getElementById('bgX2'),
+  bgPickStatus:      document.getElementById('bgPickStatus'),
+  bgPickBtn:         document.getElementById('bgPickBtn'),
+  bgClearBtn:        document.getElementById('bgClearBtn'),
+  bgClipNeg:         document.getElementById('bgClipNeg'),
+  bgShowRegionBtn:   document.getElementById('bgShowRegionBtn'),
+  bgShowOrigBtn:     document.getElementById('bgShowOrigBtn'),
+  bgShowBgLineBtn:   document.getElementById('bgShowBgLineBtn'),
+  bgShowSubBtn:      document.getElementById('bgShowSubBtn'),
+  // ── Exponential background ──
+  expX1:             document.getElementById('expX1'),
+  expX2:             document.getElementById('expX2'),
+  expPickStatus:     document.getElementById('expPickStatus'),
+  expPickBtn:        document.getElementById('expPickBtn'),
+  expClearBtn:       document.getElementById('expClearBtn'),
+  expClipNeg:        document.getElementById('expClipNeg'),
+  expChainLinear:    document.getElementById('expChainLinear'),
+  expShowRegionBtn:  document.getElementById('expShowRegionBtn'),
+  expShowFitBtn:     document.getElementById('expShowFitBtn'),
+  expShowSubBtn:     document.getElementById('expShowSubBtn'),
+  expFitFreeBtn:     document.getElementById('expFitFreeBtn'),
+  expFitAnchoredBtn: document.getElementById('expFitAnchoredBtn'),
+  expFitStatus:      document.getElementById('expFitStatus'),
+  // ── Reference subtraction ──
+  refModeTraceBtn:   document.getElementById('refModeTraceBtn'),
+  refModeFileBtn:    document.getElementById('refModeFileBtn'),
+  refTraceRow:       document.getElementById('refTraceRow'),
+  refTraceSelect:    document.getElementById('refTraceSelect'),
+  refFileRow:        document.getElementById('refFileRow'),
+  refFileInput:      document.getElementById('refFileInput'),
+  refFileName:       document.getElementById('refFileName'),
+  refScalePointBtn:  document.getElementById('refScalePointBtn'),
+  refScaleWindowBtn: document.getElementById('refScaleWindowBtn'),
+  refScalePointInputRow: document.getElementById('refScalePointInputRow'),
+  refScaleWindowInputRow: document.getElementById('refScaleWindowInputRow'),
+  refScalePoint:     document.getElementById('refScalePoint'),
+  refScaleX1:        document.getElementById('refScaleX1'),
+  refScaleX2:        document.getElementById('refScaleX2'),
+  refScalePickStatus:document.getElementById('refScalePickStatus'),
+  refScalePickBtn:   document.getElementById('refScalePickBtn'),
+  refScaleClearBtn:  document.getElementById('refScaleClearBtn'),
+  refSubFullBtn:     document.getElementById('refSubFullBtn'),
+  refSubWindowBtn:   document.getElementById('refSubWindowBtn'),
+  refSubWindowRow:   document.getElementById('refSubWindowRow'),
+  refSubX1:          document.getElementById('refSubX1'),
+  refSubX2:          document.getElementById('refSubX2'),
+  refSubPickStatus:  document.getElementById('refSubPickStatus'),
+  refSubPickBtn:     document.getElementById('refSubPickBtn'),
+  refSubClearBtn:    document.getElementById('refSubClearBtn'),
+  refChainLinear:    document.getElementById('refChainLinear'),
+  refClipNeg:        document.getElementById('refClipNeg'),
+  refShowRefBtn:     document.getElementById('refShowRefBtn'),
+  refShowScaledBtn:  document.getElementById('refShowScaledBtn'),
+  refShowSubBtn:     document.getElementById('refShowSubBtn'),
+  refStatus:         document.getElementById('refStatus'),
+  roiList:           document.getElementById('roiList'),
+  addRoiBtn:         document.getElementById('addRoiBtn'),
+  clearRoisBtn:      document.getElementById('clearRoisBtn'),
+  roiUseSub:         document.getElementById('roiUseSub'),
+  computeIntegralsBtn:document.getElementById('computeIntegralsBtn'),
+  exportIntegralsBtn:document.getElementById('exportIntegralsBtn'),
+  integralsResult:   document.getElementById('integralsResult'),
+  roiMethodSumBtn:   document.getElementById('roiMethodSumBtn'),
+  roiMethodTrapBtn:  document.getElementById('roiMethodTrapBtn'),
 };
 
 // ══════════════════════════════════════════
@@ -815,6 +1165,399 @@ function expandRange(mn,mx) {
   return [mn-pad,mx+pad];
 }
 
+// Format a number for CSV output; null/undefined → empty string
+function fmtNum(v,dec){
+  if(v===null||v===undefined||!isFinite(v)) return '';
+  return dec===0?String(Math.round(v)):v.toFixed(dec);
+}
+// Quote a CSV cell only if it contains a comma, quote, or newline
+function csvCell(v){
+  const s=String(v??'');
+  return s.includes(',')||s.includes('"')||s.includes('\n')
+    ?`"${s.replace(/"/g,'""')}"`:s;
+}
+
+// ══════════════════════════════════════════
+// Process helpers
+// ══════════════════════════════════════════
+const ROI_PALETTE = [
+  { fill:'rgba(79,142,247,0.11)',  border:'rgba(79,142,247,0.50)',  text:'#4f8ef7'  },
+  { fill:'rgba(29,158,117,0.11)',  border:'rgba(29,158,117,0.50)',  text:'#1D9E75'  },
+  { fill:'rgba(245,166,35,0.11)',  border:'rgba(245,166,35,0.50)',  text:'#c88918'  },
+  { fill:'rgba(216,90,48,0.11)',   border:'rgba(216,90,48,0.50)',   text:'#D85A30'  },
+  { fill:'rgba(127,119,221,0.11)', border:'rgba(127,119,221,0.50)', text:'#7F77DD'  },
+  { fill:'rgba(212,83,126,0.11)',  border:'rgba(212,83,126,0.50)',  text:'#D4537E'  },
+];
+
+// Extract XY for a file object, applying current trim settings
+function getTraceXY(f) {
+  const t=parseTable(f.text,f.skipRows,f.delimiter,f.hasHeader);
+  if(t.columns.length<2) return null;
+  const wc=f.wavelengthCol||t.columns[0];
+  const ic=f.intensityCol||t.columns[1]||t.columns[0];
+  const xy=extractXY(t,wc,ic);
+  if(!xy.x.length) return null;
+  const tmn=state.useGlobalXTrim?parseNum(els.globalXMin.value):(f.xMin??null);
+  const tmx=state.useGlobalXTrim?parseNum(els.globalXMax.value):(f.xMax??null);
+  const tr=trimXY(xy.x,xy.y,tmn,tmx);
+  return tr.x.length?tr:null;
+}
+
+// Apply current normalisation to a y array
+function applyNorm(x,y){
+  const refX=parseNum(els.normalisePointVal.value);
+  if(state.normalise)      return norm01(y);
+  if(state.normalisePoint&&refX!==null) return normToPoint(x,y,refX);
+  return y.slice();
+}
+
+// Linear interpolation at xt into sorted arrays xArr/yArr
+function interpY(xArr,yArr,xt){
+  if(!xArr.length) return 0;
+  if(xt<=xArr[0]) return yArr[0];
+  if(xt>=xArr[xArr.length-1]) return yArr[yArr.length-1];
+  for(let i=0;i<xArr.length-1;i++){
+    if(xArr[i]<=xt&&xArr[i+1]>=xt){
+      const frac=(xt-xArr[i])/(xArr[i+1]-xArr[i]);
+      return yArr[i]+frac*(yArr[i+1]-yArr[i]);
+    }
+  }
+  return 0;
+}
+
+// Compute linear background subtraction for a trace
+// Returns {xa, xb, ya, yb, bgY, subY} or null
+function computeLinearBg(x,y,x1,x2){
+  if(x1===null||x2===null||x1===x2) return null;
+  const xa=Math.min(x1,x2), xb=Math.max(x1,x2);
+  const ya=interpY(x,y,xa), yb=interpY(x,y,xb);
+  const slope=(yb-ya)/(xb-xa);
+  const bgY=x.map(xi=>ya+slope*(xi-xa));
+  const clip=state.bgClipNeg;
+  const subY=y.map((yi,i)=>{
+    const v=yi-bgY[i];
+    return clip?Math.max(0,v):v;
+  });
+  return {xa,xb,ya,yb,bgY,subY};
+}
+
+// ── Exponential background: y = A·exp(b·(x−x₀)) ──
+// mode 'free'     — both A and b fitted by OLS on the log scale
+// mode 'anchored' — A is fixed to the data value at x₀, only b is fitted
+//                   (regression through origin), guaranteeing the curve starts
+//                   at the same value as the data at the window start
+function fitExpBg(x, y, x1, x2, mode){
+  const px=[], py=[];
+  for(let i=0;i<x.length;i++){
+    if(x[i]>=x1&&x[i]<=x2&&y[i]>0){ px.push(x[i]); py.push(y[i]); }
+  }
+  if(px.length<3) return null;
+  const x0=px[0];
+  const xi=px.map(v=>v-x0);
+  const lny=py.map(v=>Math.log(v));
+  let A, b;
+  if(mode==='anchored'){
+    // Fix A to the interpolated data value at x0
+    A=interpY(x,y,x0);
+    if(A<=0) return null;
+    // Regression through origin: b = Σ(xi·ln(yi/A)) / Σ(xi²)
+    const lnyAdj=lny.map(v=>v-Math.log(A));
+    const sxy=xi.reduce((a,v,i)=>a+v*lnyAdj[i],0);
+    const sxx=xi.reduce((a,v)=>a+v*v,0);
+    if(Math.abs(sxx)<1e-14) return null;
+    b=sxy/sxx;
+  } else {
+    // Free: both ln(A) and b by OLS
+    const n=xi.length;
+    const sx=xi.reduce((a,v)=>a+v,0);
+    const sy=lny.reduce((a,v)=>a+v,0);
+    const sxx=xi.reduce((a,v)=>a+v*v,0);
+    const sxy=xi.reduce((a,v,i)=>a+v*lny[i],0);
+    const den=n*sxx-sx*sx;
+    if(Math.abs(den)<1e-14) return null;
+    b=(n*sxy-sx*sy)/den;
+    A=Math.exp((sy-b*sx)/n);
+  }
+  if(!isFinite(A)||!isFinite(b)||A<=0) return null;
+  // R² on log scale
+  const lnA=Math.log(A);
+  const yMean=lny.reduce((a,v)=>a+v,0)/lny.length;
+  const ssTot=lny.reduce((a,v)=>a+(v-yMean)**2,0);
+  const ssRes=xi.reduce((a,v,i)=>a+(lny[i]-(lnA+b*v))**2,0);
+  const r2=ssTot>0?Math.max(0,1-ssRes/ssTot):1;
+  return {A,b,x0,r2,nPts:px.length,mode};
+}
+
+// Subtract A·exp(b·(x−x₀)) from y for all x ≥ x₀, leaving x < x₀ unchanged.
+function applyExpBg(x, y, fit, clipNeg){
+  if(!fit) return y.slice();
+  return y.map((yi,i)=>{
+    if(x[i]<fit.x0) return yi;
+    const bgVal=fit.A*Math.exp(fit.b*(x[i]-fit.x0));
+    const v=yi-bgVal;
+    return clipNeg?Math.max(0,v):v;
+  });
+}
+
+// ── Reference subtraction helpers ──
+
+// Return {x, y} for the current reference source, or null
+function getRefXY(){
+  if(state.refMode==='file') return state.refFileData||null;
+  const idx=state.refTraceIdx;
+  if(idx<0||idx>=state.files.length) return null;
+  return getTraceXY(state.files[idx]);
+}
+
+// Populate the reference trace dropdown from current file list
+function refreshRefTraceSelect(){
+  const sel=els.refTraceSelect; if(!sel) return;
+  const prev=sel.value;
+  sel.innerHTML='<option value="-1">\u2014 select reference \u2014</option>';
+  state.files.forEach((f,i)=>{
+    const o=document.createElement('option');
+    o.value=i; o.textContent=f.traceName||f.name;
+    sel.appendChild(o);
+  });
+  // Restore previous selection if still valid
+  const pidx=parseInt(prev);
+  if(!isNaN(pidx)&&pidx>=0&&state.files[pidx]){
+    sel.value=pidx; state.refTraceIdx=pidx;
+  } else {
+    sel.value='-1'; state.refTraceIdx=-1;
+  }
+}
+
+// OLS scale factor k = Σ(data·ref) / Σ(ref²) over [x1,x2]
+// ref interpolated onto data's x-axis
+function fitScaleFactor(dataX, dataY, refX, refY, x1, x2){
+  let num=0, den=0;
+  for(let i=0;i<dataX.length;i++){
+    if(dataX[i]<x1||dataX[i]>x2) continue;
+    const ri=interpY(refX,refY,dataX[i]);
+    num+=dataY[i]*ri;
+    den+=ri*ri;
+  }
+  return den>1e-12?num/den:null;
+}
+
+// Subtract k*ref from data; optionally restricted to [subX1,subX2]
+function applyRefSub(dataX, dataY, refX, refY, k, subMode, subX1, subX2, clipNeg){
+  return dataY.map((yi,i)=>{
+    const xi=dataX[i];
+    const inRange=subMode==='full'||(xi>=subX1&&xi<=subX2);
+    if(!inRange) return yi;
+    const v=yi-k*interpY(refX,refY,xi);
+    return clipNeg?Math.max(0,v):v;
+  });
+}
+
+// Pick status helpers for reference subtraction
+function updateRefPickStatus(){
+  if(state.refPickMode&&state.refPickTarget==='scale'){
+    const msg=state.refScaleMode==='point'
+      ?'Click plot to set normalisation λ…'
+      :(state.refPickStep===1?'Click plot to set λ start…':'Click plot to set λ end…');
+    if(els.refScalePickStatus) els.refScalePickStatus.textContent=msg;
+  } else if(state.refPickMode&&state.refPickTarget==='sub'){
+    if(els.refSubPickStatus) els.refSubPickStatus.textContent=
+      state.refPickStep===1?'Click plot to set λ start…':'Click plot to set λ end…';
+  } else {
+    if(state.refScaleMode==='point'){
+      const pt=state.refScalePoint??800;
+      els.refScalePickStatus.textContent=`Normalise at ${Number(pt).toFixed(2)} nm`;
+    } else {
+      const sx1=parseNum(els.refScaleX1.value),sx2=parseNum(els.refScaleX2.value);
+      if(sx1!==null&&sx2!==null){
+        const lo=Math.min(sx1,sx2),hi=Math.max(sx1,sx2);
+        els.refScalePickStatus.textContent=`Scale window: ${lo.toFixed(2)}–${hi.toFixed(2)} nm`;
+      } else els.refScalePickStatus.textContent='No scale window set.';
+    }
+    if(state.refSubMode==='window'){
+      const rx1=parseNum(els.refSubX1.value),rx2=parseNum(els.refSubX2.value);
+      if(rx1!==null&&rx2!==null){
+        const lo=Math.min(rx1,rx2),hi=Math.max(rx1,rx2);
+        els.refSubPickStatus.textContent=`Sub window: ${lo.toFixed(2)}–${hi.toFixed(2)} nm`;
+      } else els.refSubPickStatus.textContent='No sub window set.';
+    }
+  }
+}
+
+function exitRefPickMode(){
+  state.refPickMode=false; state.refPickStep=0;
+  els.refScalePickBtn.classList.remove('on');
+  els.refScalePickBtn.textContent='\u2295 Pick from plot';
+  if(els.refSubPickBtn){
+    els.refSubPickBtn.classList.remove('on');
+    els.refSubPickBtn.textContent='\u2295 Pick from plot';
+  }
+  els.plot.classList.remove('pick-active');
+  updateRefPickStatus();
+}
+
+// Trapezoid-rule integral over [x1,x2]
+function roiIntegral(x, y, x1, x2, method){
+  // method: 'sum' → Σyᵢ (counts, integer-preserving, matches manual count)
+  //         'trap' → trapezoid area (counts·nm, physically correct spectral integral)
+  if(method==='trap'){
+    const rx=[],ry=[];
+    for(let i=0;i<x.length;i++){
+      if(x[i]>=x1&&x[i]<=x2){rx.push(x[i]);ry.push(y[i]);}
+    }
+    if(rx.length<2) return 0;
+    let area=0;
+    for(let i=0;i<rx.length-1;i++) area+=(rx[i+1]-rx[i])*(ry[i]+ry[i+1])/2;
+    return area;
+  }
+  // Default: simple sum
+  let sum=0, n=0;
+  for(let i=0;i<x.length;i++){
+    if(x[i]>=x1&&x[i]<=x2){ sum+=y[i]; n++; }
+  }
+  return n>0 ? sum : 0;
+}
+
+// Update the bgPickStatus display
+function updateBgPickStatus(){
+  const x1=parseNum(els.bgX1.value), x2=parseNum(els.bgX2.value);
+  if(state.bgPickMode){
+    const step=state.bgPickStep;
+    els.bgPickStatus.textContent=step===1
+      ?'Click on the plot to set λ₁…'
+      :'Click on the plot to set λ₂…';
+  } else if(x1!==null&&x2!==null){
+    const lo=Math.min(x1,x2), hi=Math.max(x1,x2);
+    els.bgPickStatus.textContent=`Region: ${lo.toFixed(2)} – ${hi.toFixed(2)} nm`;
+  } else {
+    els.bgPickStatus.textContent='No background region set.';
+  }
+}
+
+// Bind Plotly click event (must be re-called after each newPlot)
+function bindPlotEvents(){
+  try{ els.plot.removeAllListeners('plotly_click'); }catch(e){}
+  els.plot.on('plotly_click', function(data){
+    if(!state.bgPickMode&&!state.expPickMode&&!state.refPickMode) return;
+    // Resolve x coordinate from clicked point or raw pixel position
+    let xVal=null;
+    if(data.points&&data.points.length){
+      xVal=Number(data.points[0].x);
+    } else if(data.event){
+      const e=data.event;
+      const fl=els.plot._fullLayout;
+      if(fl&&fl.xaxis){
+        const rect=els.plot.getBoundingClientRect();
+        const px=e.clientX-rect.left;
+        const ml=fl.margin.l, wd=fl.width-fl.margin.l-fl.margin.r;
+        if(px>=ml&&px<=ml+wd){
+          const frac=(px-ml)/wd;
+          const ra=fl.xaxis.range;
+          xVal=ra[0]+frac*(ra[1]-ra[0]);
+        }
+      }
+    }
+    if(xVal===null) return;
+    xVal=Math.round(xVal*100)/100;
+
+    if(state.bgPickMode){
+      if(state.bgPickStep===1){
+        state.bgX1=xVal; els.bgX1.value=xVal; state.bgPickStep=2;
+      } else if(state.bgPickStep===2){
+        state.bgX2=xVal; els.bgX2.value=xVal; exitPickMode();
+      }
+      updateBgPickStatus(); plotAll();
+    } else if(state.expPickMode){
+      if(state.expPickStep===1){
+        state.expX1=xVal; els.expX1.value=xVal; state.expPickStep=2;
+      } else if(state.expPickStep===2){
+        state.expX2=xVal; els.expX2.value=xVal; exitExpPickMode();
+      }
+      updateExpPickStatus(); plotAll();
+    } else if(state.refPickMode){
+      const tgt=state.refPickTarget;
+      if(tgt==='scale'){
+        if(state.refScaleMode==='point'){
+          state.refScalePoint=xVal; els.refScalePoint.value=xVal;
+          exitRefPickMode();
+        } else {
+          if(state.refPickStep===1){state.refScaleX1=xVal;els.refScaleX1.value=xVal;state.refPickStep=2;}
+          else{state.refScaleX2=xVal;els.refScaleX2.value=xVal;exitRefPickMode();}
+        }
+      } else {
+        if(state.refPickStep===1){state.refSubX1=xVal;els.refSubX1.value=xVal;state.refPickStep=2;}
+        else{state.refSubX2=xVal;els.refSubX2.value=xVal;exitRefPickMode();}
+      }
+      updateRefPickStatus(); plotAll();
+    }
+  });
+}
+
+function exitPickMode(){
+  state.bgPickMode=false;
+  state.bgPickStep=0;
+  els.bgPickBtn.classList.remove('on');
+  els.bgPickBtn.textContent='⊕ Pick from plot';
+  els.plot.classList.remove('pick-active');
+  updateBgPickStatus();
+}
+
+function updateExpPickStatus(){
+  const x1=parseNum(els.expX1.value), x2=parseNum(els.expX2.value);
+  if(state.expPickMode){
+    els.expPickStatus.textContent=state.expPickStep===1
+      ?'Click on the plot to set λ start…'
+      :'Click on the plot to set λ end…';
+  } else if(x1!==null&&x2!==null){
+    const lo=Math.min(x1,x2),hi=Math.max(x1,x2);
+    els.expPickStatus.textContent=`Window: ${lo.toFixed(2)} – ${hi.toFixed(2)} nm`;
+  } else {
+    els.expPickStatus.textContent='No fitting window set.';
+  }
+}
+
+function exitExpPickMode(){
+  state.expPickMode=false;
+  state.expPickStep=0;
+  els.expPickBtn.classList.remove('on');
+  els.expPickBtn.textContent='⊕ Pick from plot';
+  els.plot.classList.remove('pick-active');
+  updateExpPickStatus();
+}
+
+// Render the ROI list
+function renderRoiList(){
+  els.roiList.innerHTML='';
+  state.rois.forEach((roi,idx)=>{
+    const pal=ROI_PALETTE[roi.colorIdx%ROI_PALETTE.length];
+    const d=document.createElement('div');
+    d.className='roi-item';
+    d.dataset.roiId=roi.id;
+    d.innerHTML=`
+      <div class="roi-dot" style="background:${pal.text}"></div>
+      <input class="roi-name" type="text" value="${escHtml(roi.name)}" placeholder="Name" title="ROI name" />
+      <input class="roi-x1" type="number" step="any" value="${roi.x1}" placeholder="λ₁" title="Start wavelength" />
+      <span class="roi-sep">–</span>
+      <input class="roi-x2" type="number" step="any" value="${roi.x2}" placeholder="λ₂" title="End wavelength" />
+      <button class="roi-del" title="Remove ROI">×</button>`;
+    // Name change
+    d.querySelector('.roi-name').addEventListener('change',e=>{
+      roi.name=e.target.value; plotAll();
+    });
+    // x1/x2 changes
+    d.querySelector('.roi-x1').addEventListener('change',e=>{
+      roi.x1=e.target.value; plotAll();
+    });
+    d.querySelector('.roi-x2').addEventListener('change',e=>{
+      roi.x2=e.target.value; plotAll();
+    });
+    // Delete
+    d.querySelector('.roi-del').addEventListener('click',()=>{
+      state.rois.splice(idx,1); renderRoiList(); plotAll();
+    });
+    els.roiList.appendChild(d);
+  });
+}
+
 // ══════════════════════════════════════════
 // UI helpers
 // ══════════════════════════════════════════
@@ -989,6 +1732,7 @@ function refreshFileList() {
   els.removeFileBtn.disabled=!hf||!ha;
   els.previewBtn.disabled=!ha;
   els.applySettingsBtn.disabled=!ha;
+  refreshRefTraceSelect();
 }
 
 function updatePreview(table,name) {
@@ -1138,19 +1882,60 @@ function plotAll(){
     let traceY=tr.y;
     if(state.normalise) traceY=norm01(tr.y);
     else if(state.normalisePoint && refX!==null) traceY=normToPoint(tr.x,tr.y,refX);
-    traces.push({
-      x:tr.x,y:traceY,
-      mode:state.showMarkers?'lines+markers':'lines',
-      name:f.traceName||f.name,
-      line:{width:lw,color:traceColor},
-      marker:{size:5,color:traceColor},
-      type:'scatter',
-      yaxis:f.rightAxis?'y2':'y',
-    });
-    plotted++;
+    // Suppress original traces if user asked for subtracted-only
+    const bgReady=state.bgX1!==null&&state.bgX2!==null;
+    if(bgReady&&!state.bgShowOrig&&state.bgShowSub) {/* skip original */} else {
+      traces.push({
+        x:tr.x,y:traceY,
+        mode:state.showMarkers?'lines+markers':'lines',
+        name:f.traceName||f.name,
+        line:{width:lw,color:traceColor},
+        marker:{size:5,color:traceColor},
+        type:'scatter',
+        yaxis:f.rightAxis?'y2':'y',
+      });
+      plotted++;
+    }
   }
 
   const hasRightAxis=state.files.some(f=>f.visible&&f.rightAxis);
+
+  // ── Process: background line & subtracted traces ──
+  const bgX1p=parseNum(els.bgX1.value), bgX2p=parseNum(els.bgX2.value);
+  const bgReady2=bgX1p!==null&&bgX2p!==null&&bgX1p!==bgX2p;
+  if(bgReady2&&(state.bgShowBgLine||state.bgShowSub)){
+    for(const f of state.files){
+      if(!f.visible) continue;
+      const tr=getTraceXY(f); if(!tr) continue;
+      const yN=applyNorm(tr.x,tr.y);
+      const bg=computeLinearBg(tr.x,yN,bgX1p,bgX2p); if(!bg) continue;
+      const tc=f.color||undefined;
+      if(state.bgShowBgLine){
+        traces.push({
+          x:[bg.xa,bg.xb], y:[bg.ya,bg.yb],
+          mode:'lines+markers',
+          name:`${f.traceName||f.name} bg`,
+          line:{width:Math.max(1,lw-0.5),dash:'dot',color:tc},
+          marker:{size:6,color:tc,symbol:'circle-open'},
+          type:'scatter', opacity:0.75,
+          yaxis:f.rightAxis?'y2':'y',
+        });
+        plotted++;
+      }
+      if(state.bgShowSub){
+        traces.push({
+          x:tr.x, y:bg.subY,
+          mode:state.showMarkers?'lines+markers':'lines',
+          name:`${f.traceName||f.name} − bg`,
+          line:{width:lw,dash:'dash',color:tc},
+          marker:{size:5,color:tc},
+          type:'scatter',
+          yaxis:f.rightAxis?'y2':'y',
+        });
+        plotted++;
+      }
+    }
+  }
   // Scale right margin with font size so the label always fits
   const rightMargin=hasRightAxis?Math.max(70, axisSz*4+30):30;
 
@@ -1213,6 +1998,278 @@ function plotAll(){
     const r=expandRange(pxMn,pxMx);if(r)layout.xaxis.range=r;
   }
 
+  // ── Process: shapes (background region + ROIs) ──
+  const procShapes=[], procAnnotations=[];
+  // Background region vrect
+  const bx1=parseNum(els.bgX1.value), bx2=parseNum(els.bgX2.value);
+  // Provisional λ₁ line during pick step 2 (before full region is drawn)
+  if(state.bgPickMode&&state.bgPickStep===2&&bx1!==null){
+    procShapes.push({
+      type:'line', xref:'x', yref:'paper',
+      x0:bx1, x1:bx1, y0:0, y1:1,
+      line:{color:'rgba(245,166,35,0.8)',width:1.5,dash:'dot'},
+    });
+    procAnnotations.push({
+      x:bx1, y:0.5, xref:'x', yref:'paper',
+      text:'λ₁', showarrow:false,
+      font:{size:9,color:'#c88918',family:'IBM Plex Mono'},
+      yanchor:'middle', xanchor:'right',
+    });
+  }
+  if(state.bgShowRegion&&bx1!==null&&bx2!==null&&bx1!==bx2){
+    const blo=Math.min(bx1,bx2),bhi=Math.max(bx1,bx2);
+    procShapes.push({
+      type:'rect', xref:'x', yref:'paper',
+      x0:blo, x1:bhi, y0:0, y1:1,
+      fillcolor:'rgba(245,166,35,0.09)',
+      line:{color:'rgba(245,166,35,0.55)',width:1},
+      layer:'below',
+    });
+    procAnnotations.push({
+      x:(blo+bhi)/2, y:0.01, xref:'x', yref:'paper',
+      text:'bg', showarrow:false,
+      font:{size:9,color:'#c88918',family:'IBM Plex Mono'},
+      yanchor:'bottom', xanchor:'center',
+    });
+  }
+  // ROI vrects
+  state.rois.forEach((roi,idx)=>{
+    const rx1=parseNum(roi.x1), rx2=parseNum(roi.x2);
+    if(rx1===null||rx2===null||rx1===rx2) return;
+    const rlo=Math.min(rx1,rx2),rhi=Math.max(rx1,rx2);
+    const pal=ROI_PALETTE[roi.colorIdx%ROI_PALETTE.length];
+    procShapes.push({
+      type:'rect', xref:'x', yref:'paper',
+      x0:rlo, x1:rhi, y0:0, y1:1,
+      fillcolor:pal.fill, line:{color:pal.border,width:1},
+      layer:'below',
+    });
+    procAnnotations.push({
+      x:(rlo+rhi)/2, y:0.99, xref:'x', yref:'paper',
+      text:roi.name||`ROI ${idx+1}`, showarrow:false,
+      font:{size:9,color:pal.text,family:'IBM Plex Mono'},
+      yanchor:'top', xanchor:'center',
+    });
+  });
+  // Exp fitting window vrect
+  const ex1=parseNum(els.expX1.value), ex2=parseNum(els.expX2.value);
+  const expReady=ex1!==null&&ex2!==null&&ex1!==ex2;
+  // Provisional λ-start line during pick step 2
+  if(state.expPickMode&&state.expPickStep===2&&ex1!==null){
+    procShapes.push({
+      type:'line', xref:'x', yref:'paper',
+      x0:ex1, x1:ex1, y0:0, y1:1,
+      line:{color:'rgba(127,119,221,0.8)',width:1.5,dash:'dot'},
+    });
+    procAnnotations.push({
+      x:ex1, y:0.5, xref:'x', yref:'paper',
+      text:'λ start', showarrow:false,
+      font:{size:9,color:'#7F77DD',family:'IBM Plex Mono'},
+      yanchor:'middle', xanchor:'right',
+    });
+  }
+  if(state.expShowRegion&&expReady){
+    const elo=Math.min(ex1,ex2),ehi=Math.max(ex1,ex2);
+    procShapes.push({
+      type:'rect', xref:'x', yref:'paper',
+      x0:elo, x1:ehi, y0:0, y1:1,
+      fillcolor:'rgba(127,119,221,0.09)',
+      line:{color:'rgba(127,119,221,0.55)',width:1},
+      layer:'below',
+    });
+    procAnnotations.push({
+      x:(elo+ehi)/2, y:0.01, xref:'x', yref:'paper',
+      text:'exp fit', showarrow:false,
+      font:{size:9,color:'#7F77DD',family:'IBM Plex Mono'},
+      yanchor:'bottom', xanchor:'center',
+    });
+  }
+  if(procShapes.length) layout.shapes=procShapes;
+  if(procAnnotations.length){
+    layout.annotations=[...(layout.annotations||[]),...procAnnotations];
+  }
+
+  // ── Process: reference subtraction shapes ──
+  const rsx1=parseNum(els.refScaleX1.value), rsx2=parseNum(els.refScaleX2.value);
+  const refScaleOk=state.refScaleMode==='point'
+    ?(state.refScalePoint!==null&&!isNaN(state.refScalePoint))
+    :(rsx1!==null&&rsx2!==null&&rsx1!==rsx2);
+  if(state.refScaleMode==='point'&&refScaleOk){
+    const pt=Number(state.refScalePoint??800);
+    procShapes.push({type:'line',xref:'x',yref:'paper',x0:pt,x1:pt,y0:0,y1:1,
+      line:{color:'rgba(29,158,117,0.85)',width:1.5,dash:'dash'}});
+    procAnnotations.push({x:pt,y:0.01,xref:'x',yref:'paper',text:'ref norm',
+      showarrow:false,font:{size:9,color:'#1D9E75',family:'IBM Plex Mono'},yanchor:'bottom',xanchor:'center'});
+  } else if(state.refScaleMode==='window'&&refScaleOk){
+    const lo=Math.min(rsx1,rsx2),hi=Math.max(rsx1,rsx2);
+    if(state.refPickMode&&state.refPickStep===2&&state.refPickTarget==='scale'){
+      procShapes.push({type:'line',xref:'x',yref:'paper',x0:lo,x1:lo,y0:0,y1:1,
+        line:{color:'rgba(29,158,117,0.8)',width:1.5,dash:'dot'}});
+    }
+    procShapes.push({type:'rect',xref:'x',yref:'paper',x0:lo,x1:hi,y0:0,y1:1,
+      fillcolor:'rgba(29,158,117,0.09)',line:{color:'rgba(29,158,117,0.55)',width:1},layer:'below'});
+    procAnnotations.push({x:(lo+hi)/2,y:0.01,xref:'x',yref:'paper',text:'ref scale (OLS)',
+      showarrow:false,font:{size:9,color:'#1D9E75',family:'IBM Plex Mono'},yanchor:'bottom',xanchor:'center'});
+  }
+  if(state.refSubMode==='window'){
+    const wx1=parseNum(els.refSubX1.value), wx2=parseNum(els.refSubX2.value);
+    if(wx1!==null&&wx2!==null&&wx1!==wx2){
+      const lo=Math.min(wx1,wx2),hi=Math.max(wx1,wx2);
+      procShapes.push({type:'rect',xref:'x',yref:'paper',x0:lo,x1:hi,y0:0,y1:1,
+        fillcolor:'rgba(216,90,48,0.08)',line:{color:'rgba(216,90,48,0.50)',width:1},layer:'below'});
+      procAnnotations.push({x:(lo+hi)/2,y:0.01,xref:'x',yref:'paper',text:'ref sub',
+        showarrow:false,font:{size:9,color:'#D85A30',family:'IBM Plex Mono'},yanchor:'bottom',xanchor:'center'});
+    }
+  }
+  // Re-apply shapes and annotations (now includes ref shapes)
+  layout.shapes=procShapes.length?procShapes:undefined;
+  if(procAnnotations.length){
+    layout.annotations=[...(layout.annotations||[]).filter(a=>!a._ref),...procAnnotations];
+  }
+
+  // ── Process: exponential background traces ──
+  const expFitSummary=[];
+  if(expReady&&(state.expShowFit||state.expShowSub)){
+    const linX1=parseNum(els.bgX1.value), linX2=parseNum(els.bgX2.value);
+    const linActive=state.expChainLinear&&linX1!==null&&linX2!==null&&linX1!==linX2;
+    for(const f of state.files){
+      if(!f.visible) continue;
+      const tr=getTraceXY(f); if(!tr) continue;
+      // Build the base signal: raw, then apply linear bg if active
+      let yBase=tr.y.slice();
+      if(linActive){
+        const lb=computeLinearBg(tr.x,yBase,linX1,linX2);
+        if(lb) yBase=lb.subY;
+      }
+      // Fit exp to yBase over [ex1, ex2]
+      const fit=fitExpBg(tr.x,yBase,Math.min(ex1,ex2),Math.max(ex1,ex2),state.expFitMode);
+      if(!fit){ expFitSummary.push(`${f.traceName||f.name}: fit failed (check window contains positive data)`); continue; }
+      expFitSummary.push(`${f.traceName||f.name}: A=${fit.A.toFixed(1)}, b=${fit.b.toFixed(5)} nm⁻¹, R²=${fit.r2.toFixed(4)} (${fit.nPts} pts)`);
+      const tc=f.color||undefined;
+      // Exp fit curve: from x0 to end of dataset
+      if(state.expShowFit){
+        const fitX=[],fitY=[];
+        for(let i=0;i<tr.x.length;i++){
+          if(tr.x[i]>=fit.x0){ fitX.push(tr.x[i]); fitY.push(fit.A*Math.exp(fit.b*(tr.x[i]-fit.x0))); }
+        }
+        traces.push({
+          x:fitX, y:fitY,
+          mode:'lines',
+          name:`${f.traceName||f.name} exp bg`,
+          line:{width:Math.max(1,lw-0.5),dash:'dashdot',color:tc},
+          type:'scatter', opacity:0.75,
+          yaxis:f.rightAxis?'y2':'y',
+        });
+        plotted++;
+      }
+      // Fully corrected trace: apply exp subtraction from x0 onwards
+      if(state.expShowSub){
+        const yCorr=applyExpBg(tr.x,yBase,fit,state.expClipNeg);
+        const suffix=linActive?' − lin − exp':' − exp';
+        traces.push({
+          x:tr.x, y:yCorr,
+          mode:state.showMarkers?'lines+markers':'lines',
+          name:`${f.traceName||f.name}${suffix}`,
+          line:{width:lw,dash:'dot',color:tc},
+          marker:{size:5,color:tc},
+          type:'scatter',
+          yaxis:f.rightAxis?'y2':'y',
+        });
+        plotted++;
+      }
+    }
+  }
+  // Update exp fit status panel
+  if(els.expFitStatus){
+    if(expFitSummary.length){
+      els.expFitStatus.innerHTML=expFitSummary.map(s=>`<div>${escHtml(s)}</div>`).join('');
+    } else {
+      els.expFitStatus.textContent='';
+    }
+  }
+
+  // ── Process: reference subtraction traces ──
+  {
+    const refXY=getRefXY();
+    const refStatusLines=[];
+    const refActive=refXY&&refScaleOk&&(state.refShowRef||state.refShowScaled||state.refShowSub);
+    if(refActive){
+      // Show the raw reference trace (once, unscaled)
+      if(state.refShowRef){
+        traces.push({
+          x:refXY.x, y:refXY.y, mode:'lines',
+          name:'Reference',
+          line:{width:Math.max(1,lw-0.5),dash:'dot',color:'rgba(29,158,117,0.85)'},
+          type:'scatter', opacity:0.8,
+        });
+        plotted++;
+      }
+      // For each data trace compute k, show scaled ref and/or subtracted
+      for(const f of state.files){
+        if(!f.visible) continue;
+        // Skip if this file IS the reference trace
+        if(state.refMode==='trace'&&state.files.indexOf(f)===state.refTraceIdx) continue;
+        const tr=getTraceXY(f); if(!tr) continue;
+        const name=f.traceName||f.name;
+        const tc=f.color||undefined;
+        // Base: raw or linear-corrected
+        let yBase=tr.y.slice();
+        let refY=refXY.y.slice(); // working copy — may be floor-corrected below
+        if(state.refChainLinear){
+          const lx1=parseNum(els.bgX1.value),lx2=parseNum(els.bgX2.value);
+          if(lx1!==null&&lx2!==null&&lx1!==lx2){
+            const lb=computeLinearBg(tr.x,yBase,lx1,lx2);
+            if(lb) yBase=lb.subY;
+            // Apply the same floor correction to the reference so k is computed on
+            // consistent (floor-removed) values for both spectra
+            const lbRef=computeLinearBg(refXY.x,refY,lx1,lx2);
+            if(lbRef) refY=lbRef.subY;
+          }
+        }
+        let k;
+        if(state.refScaleMode==='point'){
+          const pt=Number(state.refScalePoint??800);
+          const dv=interpY(tr.x,yBase,pt);
+          const rv=interpY(refXY.x,refY,pt); // use floor-corrected ref if chaining
+          k=(Math.abs(rv)>1e-10)?dv/rv:null;
+        } else {
+          k=fitScaleFactor(tr.x,yBase,refXY.x,refY,Math.min(rsx1,rsx2),Math.max(rsx1,rsx2));
+        }
+        if(k===null){ refStatusLines.push(`${name}: scale fit failed`); continue; }
+        refStatusLines.push(`${name}: k = ${k.toFixed(5)}`);
+        if(state.refShowScaled){
+          const scaledY=tr.x.map(xi=>k*interpY(refXY.x,refY,xi)); // scaled floor-corrected ref
+          traces.push({
+            x:tr.x, y:scaledY, mode:'lines',
+            name:`${name} ref×${k.toFixed(3)}`,
+            line:{width:Math.max(1,lw-0.5),dash:'dashdot',color:tc},
+            type:'scatter', opacity:0.75,
+            yaxis:f.rightAxis?'y2':'y',
+          });
+          plotted++;
+        }
+        if(state.refShowSub){
+          const wx1=parseNum(els.refSubX1.value), wx2=parseNum(els.refSubX2.value);
+          const yCorr=applyRefSub(tr.x,yBase,refXY.x,refY,k,
+            state.refSubMode,Math.min(wx1??-Infinity,wx2??-Infinity),Math.max(wx1??Infinity,wx2??Infinity),
+            state.refClipNeg);
+          traces.push({
+            x:tr.x, y:yCorr, mode:state.showMarkers?'lines+markers':'lines',
+            name:`${name} \u2212 ref`,
+            line:{width:lw,dash:'dot',color:tc},
+            marker:{size:5,color:tc},
+            type:'scatter',
+            yaxis:f.rightAxis?'y2':'y',
+          });
+          plotted++;
+        }
+      }
+    }
+    if(els.refStatus){
+      els.refStatus.innerHTML=refStatusLines.map(s=>`<div>${escHtml(s)}</div>`).join('');
+    }
+  }
+
   const scale=Math.max(1,Number(els.exportScale.value||2));
   Plotly.newPlot(els.plot,traces,layout,{
     responsive:true,scrollZoom:true,displaylogo:false,
@@ -1222,6 +2279,9 @@ function plotAll(){
       scale,
     },
   });
+
+  // Re-bind Plotly events (newPlot clears them)
+  bindPlotEvents();
 
   // Sync Plotly's auto-assigned colours back to swatches for any trace without a user colour
   // We do this after newPlot so Plotly has resolved its default colour cycle
@@ -1269,9 +2329,29 @@ async function handleFiles(list){
   for(const f of files){
     const text=await f.text();
     const skip=guessDataStart(text);
-    const parsed=parseTable(text,skip,'Auto',false);
+
+    // Auto-detect whether the line just before the data is a header row.
+    // Criteria: same column count as the data, and every field is non-numeric.
+    let useSkip=skip, useHeader=false;
+    if(skip>0){
+      const lines=text.split(/\r?\n/);
+      const headerLine=(lines[skip-1]||'').trim();
+      const dataLine  =(lines[skip]  ||'').trim();
+      if(headerLine&&dataLine){
+        // Use the same delimiter sniffing as the parser
+        const delim=sniffDelim([headerLine,dataLine].join('\n'));
+        const splitBy=l=>delim==='\t'?l.split('\t'):delim===','?l.split(','):delim===';'?l.split(';'):l.trim().split(/\s+/);
+        const hParts=splitBy(headerLine).map(p=>p.trim());
+        const dParts=splitBy(dataLine  ).map(p=>p.trim());
+        const sameWidth=hParts.length===dParts.length&&hParts.length>=2;
+        const allText  =hParts.every(p=>p!==''&&isNaN(Number(p)));
+        if(sameWidth&&allText){ useSkip=skip-1; useHeader=true; }
+      }
+    }
+
+    const parsed=parseTable(text,useSkip,'Auto',useHeader);
     state.files.push({
-      name:f.name,text,skipRows:skip,delimiter:'Auto',hasHeader:false,
+      name:f.name,text,skipRows:useSkip,delimiter:'Auto',hasHeader:useHeader,
       wavelengthCol:parsed.columns[0]||null,
       intensityCol:parsed.columns[1]||parsed.columns[0]||null,
       traceName:f.name.replace(/\.[^.]+$/,''),
@@ -1325,6 +2405,82 @@ els.savePlotBtn.addEventListener('click',async()=>{
   catch{setStatus('Failed to save plot image.');}
 });
 
+// ── Save data CSV ──
+els.saveDataBtn.addEventListener('click', () => {
+  const visible = state.files.filter(f => f.visible);
+  if(!visible.length){ setStatus('No visible traces to export.'); return; }
+
+  const linX1=parseNum(els.bgX1.value), linX2=parseNum(els.bgX2.value);
+  const linOk=linX1!==null&&linX2!==null&&linX1!==linX2;
+  const ex1=parseNum(els.expX1.value), ex2=parseNum(els.expX2.value);
+  const expOk=ex1!==null&&ex2!==null&&ex1!==ex2;
+
+  // Build a data block per trace
+  const blocks = [];
+  for(const f of visible){
+    const tr=getTraceXY(f); if(!tr) continue;
+    const name=f.traceName||f.name;
+    const b={name, wl:tr.x, raw:tr.y};
+
+    if(linOk){
+      const lb=computeLinearBg(tr.x,tr.y,linX1,linX2);
+      if(lb){ b.linBg=lb.bgY; b.linSub=lb.subY; }
+    }
+
+    if(expOk){
+      const yBase=(state.expChainLinear&&b.linSub)?b.linSub:tr.y.slice();
+      const fit=fitExpBg(tr.x,yBase,Math.min(ex1,ex2),Math.max(ex1,ex2),state.expFitMode);
+      if(fit){
+        b.expBg=tr.x.map((xi,i)=>xi>=fit.x0?fit.A*Math.exp(fit.b*(xi-fit.x0)):null);
+        b.expSub=applyExpBg(tr.x,yBase,fit,state.expClipNeg);
+      }
+    }
+    blocks.push(b);
+  }
+  if(!blocks.length){ setStatus('No data could be computed for export.'); return; }
+
+  // Header row — one wavelength column + data columns per trace
+  const headers=[];
+  for(const b of blocks){
+    headers.push(`${b.name} - wavelength (nm)`);
+    headers.push(`${b.name} - raw`);
+    if(b.linBg)  headers.push(`${b.name} - linear bg`);
+    if(b.linSub) headers.push(`${b.name} - linear corrected`);
+    if(b.expBg)  headers.push(`${b.name} - exp bg`);
+    if(b.expSub) headers.push(`${b.name} - corrected`);
+  }
+
+  const maxN=Math.max(...blocks.map(b=>b.wl.length));
+  const csvRows=[headers.map(csvCell).join(',')];
+
+  for(let i=0;i<maxN;i++){
+    const row=[];
+    for(const b of blocks){
+      if(i>=b.wl.length){
+        const ncols=2+(b.linBg?1:0)+(b.linSub?1:0)+(b.expBg?1:0)+(b.expSub?1:0);
+        for(let j=0;j<ncols;j++) row.push('');
+      } else {
+        row.push(b.wl[i].toFixed(4));
+        row.push(fmtNum(b.raw[i],0));
+        if(b.linBg)  row.push(fmtNum(b.linBg[i],2));
+        if(b.linSub) row.push(fmtNum(b.linSub[i],2));
+        if(b.expBg)  row.push(b.expBg[i]===null?'':fmtNum(b.expBg[i],2));
+        if(b.expSub) row.push(fmtNum(b.expSub[i],2));
+      }
+    }
+    csvRows.push(row.join(','));
+  }
+
+  const blob=new Blob(['\uFEFF'+csvRows.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const fn=(els.plotTitle.value||'spectra').trim().replace(/\s+/g,'_')||'spectra';
+  a.href=url; a.download=fn+'_data.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus(`Exported ${blocks.length} trace(s), ${headers.length} columns.`);
+});
+
 // ── Save session ──
 els.saveSessionBtn.addEventListener('click', () => {
   const session = {
@@ -1356,6 +2512,39 @@ els.saveSessionBtn.addEventListener('click', () => {
     logY:           state.logY,
     useGlobalXTrim: state.useGlobalXTrim,
     theme:          state.theme,
+    // ── Process state ──
+    bgX1:           state.bgX1,
+    bgX2:           state.bgX2,
+    bgShowRegion:   state.bgShowRegion,
+    bgShowOrig:     state.bgShowOrig,
+    bgShowBgLine:   state.bgShowBgLine,
+    bgShowSub:      state.bgShowSub,
+    bgClipNeg:      state.bgClipNeg,
+    // ── Exponential background ──
+    expX1:          state.expX1,
+    expX2:          state.expX2,
+    expShowRegion:  state.expShowRegion,
+    expShowFit:     state.expShowFit,
+    expShowSub:     state.expShowSub,
+    expClipNeg:     state.expClipNeg,
+    expChainLinear: state.expChainLinear,
+    expFitMode:     state.expFitMode,
+    // ── Reference subtraction ──
+    refMode:        state.refMode,
+    refTraceIdx:    state.refTraceIdx,
+    refFileData:    state.refFileData,
+    refScaleMode:   state.refScaleMode,
+    refScalePoint:  state.refScalePoint,
+    refScaleX1:     state.refScaleX1,   refScaleX2: state.refScaleX2,
+    refSubMode:     state.refSubMode,
+    refSubX1:       state.refSubX1,     refSubX2:   state.refSubX2,
+    refChainLinear: state.refChainLinear,
+    refClipNeg:     state.refClipNeg,
+    refShowRef:     state.refShowRef,   refShowScaled: state.refShowScaled,
+    refShowSub:     state.refShowSub,
+    rois:           state.rois.map(r=>({...r})),
+    roiCounter:     state._roiCounter,
+    roiMethod:      state.roiMethod,
     // All plot option inputs
     plotTitle:      els.plotTitle.value,
     xAxisLabel:     els.xAxisLabel.value,
@@ -1448,6 +2637,94 @@ els.loadSessionInput.addEventListener('change', async e => {
     // Restore theme (calls plotAll internally)
     applyTheme(session.theme || 'light');
 
+    // ── Restore process state ──
+    state.bgX1 = session.bgX1 ?? null;
+    state.bgX2 = session.bgX2 ?? null;
+    if(state.bgX1 !== null) els.bgX1.value = state.bgX1;
+    if(state.bgX2 !== null) els.bgX2.value = state.bgX2;
+    const procTogMap = {
+      bgShowRegion: els.bgShowRegionBtn,
+      bgShowOrig:   els.bgShowOrigBtn,
+      bgShowBgLine: els.bgShowBgLineBtn,
+      bgShowSub:    els.bgShowSubBtn,
+    };
+    for(const [key, btn] of Object.entries(procTogMap)){
+      state[key] = session[key] ?? state[key];
+      btn.classList.toggle('on', state[key]);
+    }
+    state.bgClipNeg = session.bgClipNeg ?? true;
+    els.bgClipNeg.checked = state.bgClipNeg;
+    state.rois = Array.isArray(session.rois) ? session.rois.map(r=>({...r})) : [];
+    state._roiCounter = session.roiCounter ?? state.rois.length;
+    state.roiMethod = session.roiMethod ?? 'sum';
+    els.roiMethodSumBtn.classList.toggle('on',  state.roiMethod==='sum');
+    els.roiMethodTrapBtn.classList.toggle('on', state.roiMethod==='trap');
+    renderRoiList();
+    updateBgPickStatus();
+
+    // ── Restore exp background state ──
+    state.expX1 = session.expX1 ?? null;
+    state.expX2 = session.expX2 ?? null;
+    if(state.expX1 !== null) els.expX1.value = state.expX1;
+    if(state.expX2 !== null) els.expX2.value = state.expX2;
+    const expTogMap = {
+      expShowRegion: els.expShowRegionBtn,
+      expShowFit:    els.expShowFitBtn,
+      expShowSub:    els.expShowSubBtn,
+    };
+    for(const [key, btn] of Object.entries(expTogMap)){
+      state[key] = session[key] ?? state[key];
+      btn.classList.toggle('on', state[key]);
+    }
+    state.expClipNeg = session.expClipNeg ?? true;
+    els.expClipNeg.checked = state.expClipNeg;
+    state.expChainLinear = session.expChainLinear ?? false;
+    els.expChainLinear.checked = state.expChainLinear;
+    state.expFitMode = session.expFitMode ?? 'free';
+    els.expFitFreeBtn.classList.toggle('on',     state.expFitMode === 'free');
+    els.expFitAnchoredBtn.classList.toggle('on', state.expFitMode === 'anchored');
+    updateExpPickStatus();
+
+    // ── Restore reference subtraction state ──
+    state.refMode       = session.refMode       ?? 'trace';
+    state.refTraceIdx   = session.refTraceIdx   ?? -1;
+    state.refFileData   = session.refFileData   ?? null;
+    state.refScaleMode  = session.refScaleMode  ?? 'point';
+    state.refScalePoint = session.refScalePoint ?? 800;
+    state.refScaleX1    = session.refScaleX1    ?? null;
+    state.refScaleX2    = session.refScaleX2    ?? null;
+    state.refSubMode    = session.refSubMode    ?? 'full';
+    state.refSubX1      = session.refSubX1      ?? null;
+    state.refSubX2      = session.refSubX2      ?? null;
+    state.refChainLinear= session.refChainLinear?? false;
+    state.refClipNeg    = session.refClipNeg    ?? true;
+    state.refShowRef    = session.refShowRef    ?? false;
+    state.refShowScaled = session.refShowScaled ?? false;
+    state.refShowSub    = session.refShowSub    ?? false;
+    els.refModeTraceBtn.classList.toggle('on',  state.refMode==='trace');
+    els.refModeFileBtn.classList.toggle('on',   state.refMode==='file');
+    els.refTraceRow.style.display  = state.refMode==='trace'?'':'none';
+    els.refFileRow.style.display   = state.refMode==='file' ?'':'none';
+    els.refScalePointBtn.classList.toggle('on',  state.refScaleMode==='point');
+    els.refScaleWindowBtn.classList.toggle('on', state.refScaleMode==='window');
+    els.refScalePointInputRow.style.display  = state.refScaleMode==='point' ?'':'none';
+    els.refScaleWindowInputRow.style.display = state.refScaleMode==='window'?'':'none';
+    if(state.refScalePoint!==null) els.refScalePoint.value=state.refScalePoint;
+    if(state.refScaleX1!==null) els.refScaleX1.value=state.refScaleX1;
+    if(state.refScaleX2!==null) els.refScaleX2.value=state.refScaleX2;
+    els.refSubFullBtn.classList.toggle('on',   state.refSubMode==='full');
+    els.refSubWindowBtn.classList.toggle('on', state.refSubMode==='window');
+    els.refSubWindowRow.style.display = state.refSubMode==='window'?'':'none';
+    if(state.refSubX1!==null) els.refSubX1.value=state.refSubX1;
+    if(state.refSubX2!==null) els.refSubX2.value=state.refSubX2;
+    els.refChainLinear.checked = state.refChainLinear;
+    els.refClipNeg.checked     = state.refClipNeg;
+    els.refShowRefBtn.classList.toggle('on',    state.refShowRef);
+    els.refShowScaledBtn.classList.toggle('on', state.refShowScaled);
+    els.refShowSubBtn.classList.toggle('on',    state.refShowSub);
+    if(state.refFileData) els.refFileName.textContent=`${state.refFileData.name} (${state.refFileData.x.length} pts)`;
+    updateRefPickStatus();
+
     // Refresh UI
     refreshFileList();
     loadActive();
@@ -1468,6 +2745,468 @@ els.loadSessionInput.addEventListener('change', async e => {
   if(el.tagName==='INPUT'&&(el.type==='text'||el.type==='number'))
     el.addEventListener('input',plotAll);
 });
+
+// ══════════════════════════════════════════
+// Process tab event handlers
+// ══════════════════════════════════════════
+
+// λ₁ / λ₂ manual inputs
+[els.bgX1, els.bgX2].forEach(inp => {
+  inp.addEventListener('change', () => {
+    state.bgX1 = parseNum(els.bgX1.value);
+    state.bgX2 = parseNum(els.bgX2.value);
+    updateBgPickStatus(); plotAll();
+  });
+});
+
+// Pick from plot
+els.bgPickBtn.addEventListener('click', () => {
+  if(state.bgPickMode){
+    exitPickMode(); return;
+  }
+  state.bgPickMode = true;
+  state.bgPickStep = 1;
+  state.bgX1 = null; state.bgX2 = null;
+  els.bgX1.value = ''; els.bgX2.value = '';
+  els.bgPickBtn.classList.add('on');
+  els.bgPickBtn.textContent = '✕ Cancel pick';
+  els.plot.classList.add('pick-active');
+  updateBgPickStatus();
+});
+
+// Escape key cancels pick mode
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && state.bgPickMode) exitPickMode();
+});
+
+// Clear background
+els.bgClearBtn.addEventListener('click', () => {
+  exitPickMode();
+  state.bgX1 = null; state.bgX2 = null;
+  els.bgX1.value = ''; els.bgX2.value = '';
+  updateBgPickStatus(); plotAll();
+});
+
+// Clip-negatives checkbox
+els.bgClipNeg.addEventListener('change', () => {
+  state.bgClipNeg = els.bgClipNeg.checked; plotAll();
+});
+
+// Show-on-plot toggles (background section)
+function setupProcToggle(btn, key){
+  btn.addEventListener('click', () => {
+    state[key] = !state[key];
+    btn.classList.toggle('on', state[key]);
+    plotAll();
+  });
+}
+setupProcToggle(els.bgShowRegionBtn, 'bgShowRegion');
+setupProcToggle(els.bgShowOrigBtn,   'bgShowOrig');
+setupProcToggle(els.bgShowBgLineBtn, 'bgShowBgLine');
+setupProcToggle(els.bgShowSubBtn,    'bgShowSub');
+
+// Add ROI
+els.addRoiBtn.addEventListener('click', () => {
+  const idx = state.rois.length;
+  state._roiCounter++;
+  state.rois.push({
+    id: state._roiCounter,
+    name: `ROI ${state._roiCounter}`,
+    x1: '', x2: '',
+    colorIdx: idx,
+  });
+  renderRoiList(); plotAll();
+});
+
+// Clear all ROIs
+els.clearRoisBtn.addEventListener('click', () => {
+  state.rois = []; state.lastIntegrals = null;
+  els.exportIntegralsBtn.disabled = true;
+  els.integralsResult.innerHTML = '';
+  renderRoiList(); plotAll();
+});
+
+// Compute integrals
+els.computeIntegralsBtn.addEventListener('click', () => {
+  const useSub = els.roiUseSub.checked;
+  const bx1 = parseNum(els.bgX1.value), bx2 = parseNum(els.bgX2.value);
+  const bgAvailable = bx1!==null && bx2!==null && bx1!==bx2;
+
+  // Collect valid ROIs
+  const validRois = state.rois.filter(r => {
+    const x1 = parseNum(r.x1), x2 = parseNum(r.x2);
+    return x1!==null && x2!==null && x1!==x2;
+  });
+  if(!validRois.length){
+    setStatus('No valid ROIs defined. Add at least one ROI with both wavelengths set.');
+    return;
+  }
+
+  // Collect visible traces with data
+  // Always integrate raw counts — display normalisation is for visualisation only.
+  // Background subtraction (if requested) is applied to the raw values.
+  // Pre-compute reference for subtraction (mirrors plotAll logic)
+  const _rsx1=parseNum(els.refScaleX1.value), _rsx2=parseNum(els.refScaleX2.value);
+  const _refScaleOk=state.refScaleMode==='point'
+    ?(state.refScalePoint!==null&&!isNaN(state.refScalePoint))
+    :(_rsx1!==null&&_rsx2!==null&&_rsx1!==_rsx2);
+  const _refXY=getRefXY();
+  const _refActive=useSub&&_refXY&&_refScaleOk;
+  let _refY=null;
+  if(_refActive){
+    _refY=_refXY.y.slice();
+    if(state.refChainLinear&&bgAvailable){
+      const _lbRef=computeLinearBg(_refXY.x,_refY,bx1,bx2);
+      if(_lbRef) _refY=_lbRef.subY;
+    }
+  }
+
+  const traceResults = [];
+  for(const f of state.files){
+    if(!f.visible) continue;
+    // Skip the reference trace itself when ref subtraction is active
+    if(_refActive && state.refMode==='trace' && state.files.indexOf(f)===state.refTraceIdx) continue;
+    const tr = getTraceXY(f); if(!tr) continue;
+    const yRaw = tr.y.slice();   // raw counts, normalisation deliberately not applied
+    let yUse = yRaw;
+    if(useSub && bgAvailable){
+      const bg = computeLinearBg(tr.x, yRaw, bx1, bx2);
+      if(bg) yUse = bg.subY;
+    }
+    // Apply reference subtraction (same pipeline as plot)
+    if(_refActive && _refY){
+      let _k;
+      if(state.refScaleMode==='point'){
+        const _pt=Number(state.refScalePoint??800);
+        const _dv=interpY(tr.x,yUse,_pt);
+        const _rv=interpY(_refXY.x,_refY,_pt);
+        _k=(Math.abs(_rv)>1e-10)?_dv/_rv:null;
+      } else {
+        _k=fitScaleFactor(tr.x,yUse,_refXY.x,_refY,Math.min(_rsx1,_rsx2),Math.max(_rsx1,_rsx2));
+      }
+      if(_k!==null){
+        const _wx1=parseNum(els.refSubX1.value), _wx2=parseNum(els.refSubX2.value);
+        yUse=applyRefSub(tr.x,yUse,_refXY.x,_refY,_k,
+          state.refSubMode,
+          Math.min(_wx1??-Infinity,_wx2??-Infinity),
+          Math.max(_wx1??Infinity,_wx2??Infinity),
+          state.refClipNeg);
+      }
+    }
+    const row = { name: f.traceName||f.name, integrals: [] };
+    for(const roi of validRois){
+      const x1 = parseNum(roi.x1), x2 = parseNum(roi.x2);
+      row.integrals.push(roiIntegral(tr.x, yUse, Math.min(x1,x2), Math.max(x1,x2), state.roiMethod));
+    }
+    traceResults.push(row);
+  }
+
+  if(!traceResults.length){
+    setStatus('No visible traces with data to integrate.');
+    return;
+  }
+
+  // Build table
+  // Format a wavelength value: integer if it has no fractional part, else 1 d.p.
+  const fmtWl = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+  const headers = ['Trace', ...validRois.map(r => {
+    const x1=parseFloat(r.x1), x2=parseFloat(r.x2);
+    return `${fmtWl(Math.min(x1,x2))}-${fmtWl(Math.max(x1,x2))} nm`;
+  })];
+
+  let html = `<div class="int-wrap"><table class="int-table"><thead><tr>`;
+  headers.forEach(h => {
+    html += `<th>${escHtml(h)}</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+  traceResults.forEach(row => {
+    html += `<tr><td title="${escHtml(row.name)}">${escHtml(row.name)}</td>`;
+    row.integrals.forEach(v => {
+      const fmt = state.roiMethod==='trap' ? v.toFixed(1) : Math.round(v).toLocaleString();
+      html += `<td>${fmt}</td>`;
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+  const methodNote = state.roiMethod==='trap'
+    ? 'Trapezoid integral (counts · nm)'
+    : 'Simple sum (Σy, counts)';
+  const normActive = state.normalise || state.normalisePoint;
+  const subNote  = (useSub && bgAvailable) ? ' · background-subtracted' : '';
+  const normNote = normActive ? ' · display normalisation ignored' : '';
+  html += `<div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-top:4px">${methodNote}${subNote}${normNote}</div>`;
+  els.integralsResult.innerHTML = html;
+  els.exportIntegralsBtn.disabled = false;
+
+  // Store for export
+  state.lastIntegrals = { headers, rows: traceResults };
+  setStatus(`Integrals computed for ${traceResults.length} trace(s) × ${validRois.length} ROI(s).`);
+});
+
+// Integration method toggles
+els.roiMethodSumBtn.addEventListener('click', () => {
+  state.roiMethod = 'sum';
+  els.roiMethodSumBtn.classList.add('on');
+  els.roiMethodTrapBtn.classList.remove('on');
+});
+els.roiMethodTrapBtn.addEventListener('click', () => {
+  state.roiMethod = 'trap';
+  els.roiMethodTrapBtn.classList.add('on');
+  els.roiMethodSumBtn.classList.remove('on');
+});
+
+// Export integrals as CSV
+els.exportIntegralsBtn.addEventListener('click', () => {
+  if(!state.lastIntegrals) return;
+  const { headers, rows } = state.lastIntegrals;
+  // Single-line headers for CSV (strip newline)
+  const csvHeaders = headers.map(h => `"${h.replace(/\n/g,' ').replace(/"/g,'""')}"`);
+  const lines = [csvHeaders.join(',')];
+  rows.forEach(row => {
+    const fmt = v => state.roiMethod==='trap' ? v.toFixed(4) : Math.round(v);
+    const cells = [`"${row.name.replace(/"/g,'""')}"`, ...row.integrals.map(fmt)];
+    lines.push(cells.join(','));
+  });
+  // '\uFEFF' is the UTF-8 BOM — tells Excel to open as UTF-8 instead of guessing
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fn = (els.plotTitle.value||'spectra').trim().replace(/\s+/g,'_')||'spectra';
+  a.href = url; a.download = fn + '_integrals.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus('Integrals exported as CSV.');
+});
+
+
+// ── Exponential background event handlers ──
+
+// λ start / λ end manual inputs
+[els.expX1, els.expX2].forEach(inp => {
+  inp.addEventListener('change', () => {
+    state.expX1 = parseNum(els.expX1.value);
+    state.expX2 = parseNum(els.expX2.value);
+    updateExpPickStatus(); plotAll();
+  });
+});
+
+// Pick from plot
+els.expPickBtn.addEventListener('click', () => {
+  if(state.expPickMode){ exitExpPickMode(); return; }
+  if(state.bgPickMode) exitPickMode();   // cancel linear pick if active
+  state.expPickMode = true;
+  state.expPickStep = 1;
+  state.expX1 = null; state.expX2 = null;
+  els.expX1.value = ''; els.expX2.value = '';
+  els.expPickBtn.classList.add('on');
+  els.expPickBtn.textContent = '\u2715 Cancel pick';
+  els.plot.classList.add('pick-active');
+  updateExpPickStatus();
+});
+
+// Escape also cancels exp pick mode
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && state.expPickMode) exitExpPickMode();
+});
+
+// Clear exp window
+els.expClearBtn.addEventListener('click', () => {
+  exitExpPickMode();
+  state.expX1 = null; state.expX2 = null;
+  els.expX1.value = ''; els.expX2.value = '';
+  els.expFitStatus.textContent = '';
+  updateExpPickStatus(); plotAll();
+});
+
+// Fit mode toggles
+els.expFitFreeBtn.addEventListener('click', () => {
+  state.expFitMode = 'free';
+  els.expFitFreeBtn.classList.add('on');
+  els.expFitAnchoredBtn.classList.remove('on');
+  plotAll();
+});
+els.expFitAnchoredBtn.addEventListener('click', () => {
+  state.expFitMode = 'anchored';
+  els.expFitAnchoredBtn.classList.add('on');
+  els.expFitFreeBtn.classList.remove('on');
+  plotAll();
+});
+
+// Clip-negatives checkbox
+els.expClipNeg.addEventListener('change', () => {
+  state.expClipNeg = els.expClipNeg.checked; plotAll();
+});
+
+// Chain from linear background checkbox
+els.expChainLinear.addEventListener('change', () => {
+  state.expChainLinear = els.expChainLinear.checked; plotAll();
+});
+
+// Show-on-plot toggles (exp section)
+setupProcToggle(els.expShowRegionBtn, 'expShowRegion');
+setupProcToggle(els.expShowFitBtn,    'expShowFit');
+setupProcToggle(els.expShowSubBtn,    'expShowSub');
+
+// ── Reference subtraction event handlers ──
+
+// Source mode toggle
+els.refModeTraceBtn.addEventListener('click', () => {
+  state.refMode='trace';
+  els.refModeTraceBtn.classList.add('on'); els.refModeFileBtn.classList.remove('on');
+  els.refTraceRow.style.display=''; els.refFileRow.style.display='none';
+  plotAll();
+});
+els.refModeFileBtn.addEventListener('click', () => {
+  state.refMode='file';
+  els.refModeFileBtn.classList.add('on'); els.refModeTraceBtn.classList.remove('on');
+  els.refTraceRow.style.display='none'; els.refFileRow.style.display='';
+  plotAll();
+});
+
+// Trace selector
+els.refTraceSelect.addEventListener('change', () => {
+  state.refTraceIdx=parseInt(els.refTraceSelect.value); plotAll();
+});
+
+// Load reference file
+els.refFileInput.addEventListener('change', async e => {
+  const f=e.target.files[0]; if(!f) return;
+  const text=await f.text();
+  const skip=guessDataStart(text);
+  let useSkip=skip, useHeader=false;
+  if(skip>0){
+    const lines=text.split(/\r?\n/);
+    const hLine=(lines[skip-1]||'').trim(), dLine=(lines[skip]||'').trim();
+    if(hLine&&dLine){
+      const delim=sniffDelim([hLine,dLine].join('\n'));
+      const sp=l=>delim==='\t'?l.split('\t'):delim===','?l.split(','):delim===';'?l.split(';'):l.trim().split(/\s+/);
+      const hp=sp(hLine).map(p=>p.trim()), dp=sp(dLine).map(p=>p.trim());
+      if(hp.length===dp.length&&hp.length>=2&&hp.every(p=>p!==''&&isNaN(Number(p)))){
+        useSkip=skip-1; useHeader=true;
+      }
+    }
+  }
+  const parsed=parseTable(text,useSkip,'Auto',useHeader);
+  const wc=parsed.columns[0]||null, ic=parsed.columns[1]||parsed.columns[0]||null;
+  if(!wc||!ic){ setStatus('Could not parse reference file.'); return; }
+  const xy=extractXY(parsed,wc,ic);
+  if(!xy.x.length){ setStatus('No numeric data found in reference file.'); return; }
+  state.refFileData={name:f.name.replace(/\.[^.]+$/,''),x:xy.x,y:xy.y};
+  els.refFileName.textContent=`${state.refFileData.name} (${xy.x.length} pts)`;
+  els.refFileInput.value='';
+  plotAll();
+  setStatus(`Reference loaded: ${state.refFileData.name}`);
+});
+
+// Scale window manual inputs
+[els.refScaleX1,els.refScaleX2].forEach(inp=>{
+  inp.addEventListener('change',()=>{
+    state.refScaleX1=parseNum(els.refScaleX1.value);
+    state.refScaleX2=parseNum(els.refScaleX2.value);
+    updateRefPickStatus(); plotAll();
+  });
+});
+
+// Scale mode toggles
+els.refScalePointBtn.addEventListener('click',()=>{
+  state.refScaleMode='point';
+  els.refScalePointBtn.classList.add('on'); els.refScaleWindowBtn.classList.remove('on');
+  els.refScalePointInputRow.style.display=''; els.refScaleWindowInputRow.style.display='none';
+  exitRefPickMode(); updateRefPickStatus(); plotAll();
+});
+els.refScaleWindowBtn.addEventListener('click',()=>{
+  state.refScaleMode='window';
+  els.refScaleWindowBtn.classList.add('on'); els.refScalePointBtn.classList.remove('on');
+  els.refScaleWindowInputRow.style.display=''; els.refScalePointInputRow.style.display='none';
+  exitRefPickMode(); updateRefPickStatus(); plotAll();
+});
+// Single-point wavelength input
+els.refScalePoint.addEventListener('change',()=>{
+  state.refScalePoint=parseNum(els.refScalePoint.value)??800;
+  updateRefPickStatus(); plotAll();
+});
+// Scale pick / clear
+els.refScalePickBtn.addEventListener('click',()=>{
+  if(state.refPickMode&&state.refPickTarget==='scale'){ exitRefPickMode(); return; }
+  if(state.bgPickMode) exitPickMode();
+  if(state.expPickMode) exitExpPickMode();
+  if(state.refPickMode) exitRefPickMode();
+  state.refPickMode=true; state.refPickStep=1; state.refPickTarget='scale';
+  if(state.refScaleMode==='window'){
+    state.refScaleX1=null; state.refScaleX2=null;
+    els.refScaleX1.value=''; els.refScaleX2.value='';
+  }
+  els.refScalePickBtn.classList.add('on');
+  els.refScalePickBtn.textContent='✕ Cancel pick';
+  els.plot.classList.add('pick-active');
+  updateRefPickStatus();
+});
+els.refScaleClearBtn.addEventListener('click',()=>{
+  exitRefPickMode();
+  if(state.refScaleMode==='point'){
+    state.refScalePoint=800; els.refScalePoint.value=800;
+  } else {
+    state.refScaleX1=null; state.refScaleX2=null;
+    els.refScaleX1.value=''; els.refScaleX2.value='';
+  }
+  updateRefPickStatus(); plotAll();
+});
+
+// Sub range mode
+els.refSubFullBtn.addEventListener('click',()=>{
+  state.refSubMode='full';
+  els.refSubFullBtn.classList.add('on'); els.refSubWindowBtn.classList.remove('on');
+  els.refSubWindowRow.style.display='none'; plotAll();
+});
+els.refSubWindowBtn.addEventListener('click',()=>{
+  state.refSubMode='window';
+  els.refSubWindowBtn.classList.add('on'); els.refSubFullBtn.classList.remove('on');
+  els.refSubWindowRow.style.display=''; updateRefPickStatus(); plotAll();
+});
+
+// Sub window manual inputs
+[els.refSubX1,els.refSubX2].forEach(inp=>{
+  inp.addEventListener('change',()=>{
+    state.refSubX1=parseNum(els.refSubX1.value);
+    state.refSubX2=parseNum(els.refSubX2.value);
+    updateRefPickStatus(); plotAll();
+  });
+});
+
+// Sub window pick
+els.refSubPickBtn.addEventListener('click',()=>{
+  if(state.refPickMode&&state.refPickTarget==='sub'){ exitRefPickMode(); return; }
+  if(state.bgPickMode) exitPickMode();
+  if(state.expPickMode) exitExpPickMode();
+  if(state.refPickMode) exitRefPickMode();
+  state.refPickMode=true; state.refPickStep=1; state.refPickTarget='sub';
+  state.refSubX1=null; state.refSubX2=null;
+  els.refSubX1.value=''; els.refSubX2.value='';
+  els.refSubPickBtn.classList.add('on');
+  els.refSubPickBtn.textContent='\u2715 Cancel pick';
+  els.plot.classList.add('pick-active');
+  updateRefPickStatus();
+});
+els.refSubClearBtn.addEventListener('click',()=>{
+  exitRefPickMode();
+  state.refSubX1=null; state.refSubX2=null;
+  els.refSubX1.value=''; els.refSubX2.value='';
+  updateRefPickStatus(); plotAll();
+});
+
+// Escape cancels ref pick too
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&state.refPickMode) exitRefPickMode();
+});
+
+// Checkboxes
+els.refChainLinear.addEventListener('change',()=>{ state.refChainLinear=els.refChainLinear.checked; plotAll(); });
+els.refClipNeg.addEventListener('change',()=>{     state.refClipNeg=els.refClipNeg.checked; plotAll(); });
+
+// Show toggles
+setupProcToggle(els.refShowRefBtn,    'refShowRef');
+setupProcToggle(els.refShowScaledBtn, 'refShowScaled');
+setupProcToggle(els.refShowSubBtn,    'refShowSub');
 
 // ══════════════════════════════════════════
 // Init
