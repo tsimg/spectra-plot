@@ -376,7 +376,7 @@
           <div class="sb-sec-body">
             <label class="drop-zone" id="dropZone">
               Click or drag files here
-              <input id="fileInput" type="file" multiple accept=".txt,.csv,.tsv,.dat,text/plain" />
+              <input id="fileInput" type="file" multiple accept=".txt,.csv,.tsv,.dat,.sif,text/plain" />
             </label>
             <div id="fileList" class="file-list"></div>
             <div class="btn-row">
@@ -2324,38 +2324,149 @@ function plotAll(){
 // ══════════════════════════════════════════
 // File loading
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// SIF file parser (Andor Technology format)
+// ══════════════════════════════════════════
+function parseSif(buffer) {
+  // Decode the entire file as latin-1 (lossless: each byte maps to the
+  // character with that code point, so string offsets == byte offsets).
+  const decoder = new TextDecoder('iso-8859-1');
+  const text = decoder.decode(new Uint8Array(buffer));
+
+  const results = [];
+
+  // Tile descriptor pattern: "<type> 1 <rows> <width> 1 <rows> 1 0\n         0\n0\n"
+  // The width (spectral pixels) is captured from the 4th token, making this
+  // work with any detector size (512, 1024, 2048 px, etc.).
+  const tileRe = /\d+ 1 \d+ (\d+) 1 \d+ 1 0\r?\n {9}0\r?\n0\r?\n/g;
+
+  let match;
+  while ((match = tileRe.exec(text)) !== null) {
+    const width    = parseInt(match[1]);
+    const nBytes   = width * 4;
+    const dataStart = match.index + match[0].length; // byte offset == char offset
+
+    if (dataStart + nBytes > buffer.byteLength) continue; // sanity check
+
+    // Read width x float32 (little-endian) from the buffer
+    const view = new DataView(buffer, dataStart, nBytes);
+    const intensity = new Float32Array(width);
+    for (let i = 0; i < width; i++) {
+      intensity[i] = view.getFloat32(i * 4, true);
+    }
+
+    // Context text: up to 600 bytes before this match
+    const context = text.slice(Math.max(0, match.index - 600), match.index);
+
+    // Calibration: 4 polynomial coefficients followed by two "0 1 0 0" lines
+    const calibRe = /([-\d.eE]+) ([-\d.eE]+) ([-\d.eE]+) ([-\d.eE]+)\s*\n0 1 0 0\s*\n0 1 0 0/;
+    const calibM  = calibRe.exec(context);
+    const wavelength = new Float64Array(width);
+    if (calibM) {
+      const c = [1,2,3,4].map(i => parseFloat(calibM[i]));
+      for (let i = 0; i < width; i++) {
+        const px = i + 1;
+        wavelength[i] = c[0] + c[1]*px + c[2]*px*px + c[3]*px*px*px;
+      }
+    } else {
+      for (let i = 0; i < width; i++) wavelength[i] = i + 1;
+    }
+
+    // Datatype label: "Counts" or "Counts (Bg Corrected)"
+    const dtM = /(Counts(?: \(Bg Corrected\))?)\d*\nPixel number/.exec(context);
+    const datatype = dtM ? dtM[1] : 'Unknown';
+
+    results.push({ datatype, wavelength, intensity });
+  }
+
+  return results;
+}
+
+function sifFramesToCsvText(frames) {
+  if (!frames.length) return '';
+  const width   = frames[0].wavelength.length;
+  const hasTwo  = frames.length >= 2;
+
+  // Header: Wavelength, <datatype per frame>, [Corrected if 2+ frames]
+  const header = ['Wavelength',
+    ...frames.map(fr => fr.datatype),
+    ...(hasTwo ? ['Corrected'] : []),
+  ].join(',');
+
+  const rows = [header];
+  for (let i = 0; i < width; i++) {
+    const wl   = frames[0].wavelength[i].toFixed(6);
+    const vals = frames.map(fr => fr.intensity[i].toFixed(4));
+    const corr = hasTwo
+      ? [(frames[0].intensity[i] - frames[1].intensity[i]).toFixed(4)]
+      : [];
+    rows.push([wl, ...vals, ...corr].join(','));
+  }
+  return rows.join('\n');
+}
+
 async function handleFiles(list){
   const files=Array.from(list);if(!files.length)return;
   for(const f of files){
-    const text=await f.text();
-    const skip=guessDataStart(text);
+    const isSif=f.name.toLowerCase().endsWith('.sif');
+    let text, useSkip, useHeader, parsed, defaultIntensityCol;
 
-    // Auto-detect whether the line just before the data is a header row.
-    // Criteria: same column count as the data, and every field is non-numeric.
-    let useSkip=skip, useHeader=false;
-    if(skip>0){
-      const lines=text.split(/\r?\n/);
-      const headerLine=(lines[skip-1]||'').trim();
-      const dataLine  =(lines[skip]  ||'').trim();
-      if(headerLine&&dataLine){
-        // Use the same delimiter sniffing as the parser
-        const delim=sniffDelim([headerLine,dataLine].join('\n'));
-        const splitBy=l=>delim==='\t'?l.split('\t'):delim===','?l.split(','):delim===';'?l.split(';'):l.trim().split(/\s+/);
-        const hParts=splitBy(headerLine).map(p=>p.trim());
-        const dParts=splitBy(dataLine  ).map(p=>p.trim());
-        const sameWidth=hParts.length===dParts.length&&hParts.length>=2;
-        const allText  =hParts.every(p=>p!==''&&isNaN(Number(p)));
-        if(sameWidth&&allText){ useSkip=skip-1; useHeader=true; }
+    if(isSif){
+      // ── SIF branch: parse binary format, synthesise a CSV string ──
+      try {
+        const buffer=await f.arrayBuffer();
+        const frames=parseSif(buffer);
+        if(!frames.length){
+          setStatus(`Could not parse ${f.name} — no spectral frames found.`);
+          continue;
+        }
+        text=sifFramesToCsvText(frames);
+        useSkip=0; useHeader=true;
+        parsed=parseTable(text,0,'Comma',true);
+        // Default Y column: 'Corrected' when both signal+background are present,
+        // otherwise the second column (the only data column)
+        defaultIntensityCol=parsed.columns.includes('Corrected')
+          ?'Corrected'
+          :(parsed.columns[1]||parsed.columns[0]||null);
+      } catch(err) {
+        setStatus(`Error parsing ${f.name}: ${err.message}`);
+        continue;
       }
+    } else {
+      // ── Standard text branch (CSV, TSV, TXT, DAT, ...) ──
+      text=await f.text();
+      const skip=guessDataStart(text);
+
+      // Auto-detect whether the line just before the data is a header row.
+      // Criteria: same column count as the data, and every field is non-numeric.
+      useSkip=skip; useHeader=false;
+      if(skip>0){
+        const lines=text.split(/\r?\n/);
+        const headerLine=(lines[skip-1]||'').trim();
+        const dataLine  =(lines[skip]  ||'').trim();
+        if(headerLine&&dataLine){
+          const delim=sniffDelim([headerLine,dataLine].join('\n'));
+          const splitBy=l=>delim==='\t'?l.split('\t'):delim===','?l.split(','):delim===';'?l.split(';'):l.trim().split(/\s+/);
+          const hParts=splitBy(headerLine).map(p=>p.trim());
+          const dParts=splitBy(dataLine  ).map(p=>p.trim());
+          const sameWidth=hParts.length===dParts.length&&hParts.length>=2;
+          const allText  =hParts.every(p=>p!==''&&isNaN(Number(p)));
+          if(sameWidth&&allText){ useSkip=skip-1; useHeader=true; }
+        }
+      }
+      parsed=parseTable(text,useSkip,'Auto',useHeader);
+      defaultIntensityCol=parsed.columns[1]||parsed.columns[0]||null;
     }
 
-    const parsed=parseTable(text,useSkip,'Auto',useHeader);
     state.files.push({
-      name:f.name,text,skipRows:useSkip,delimiter:'Auto',hasHeader:useHeader,
+      name:f.name, text,
+      skipRows:useSkip,
+      delimiter:isSif?'Comma':'Auto',
+      hasHeader:useHeader,
       wavelengthCol:parsed.columns[0]||null,
-      intensityCol:parsed.columns[1]||parsed.columns[0]||null,
+      intensityCol:defaultIntensityCol,
       traceName:f.name.replace(/\.[^.]+$/,''),
-      visible:true,rightAxis:false,color:null,xMin:null,xMax:null,
+      visible:true, rightAxis:false, color:null, xMin:null, xMax:null,
     });
   }
   if(state.activeIndex<0&&state.files.length>0) state.activeIndex=0;
