@@ -431,6 +431,13 @@
               <button class="sb-btn" id="previewBtn" disabled>Preview</button>
               <button class="sb-btn primary" id="applySettingsBtn" disabled>Apply</button>
             </div>
+            <div id="expandSection" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+              <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:6px;">Expand columns to traces</label>
+              <div id="expandColList" style="display:flex;flex-direction:column;gap:3px;max-height:130px;overflow-y:auto;margin-bottom:8px;"></div>
+              <div class="btn-row">
+                <button class="sb-btn primary" id="expandBtn">Expand to traces</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -867,6 +874,9 @@ const els = {
   saveDataBtn:      document.getElementById('saveDataBtn'),
   saveSessionBtn:   document.getElementById('saveSessionBtn'),
   loadSessionInput: document.getElementById('loadSessionInput'),
+  expandSection:     document.getElementById('expandSection'),
+  expandColList:     document.getElementById('expandColList'),
+  expandBtn:         document.getElementById('expandBtn'),
   replotBtn:        document.getElementById('replotBtn'),
   themeToggleBtn:   document.getElementById('themeToggleBtn'),
   normaliseBtn:          document.getElementById('normaliseBtn'),
@@ -1773,6 +1783,19 @@ function loadActive() {
     els.xRangeInfo.textContent='Full range: —';els.useFullRangeBtn.disabled=true;
   }
   updatePreview(t,f.name);
+  // Expand-to-traces: show if active file has more than one non-X column
+  const _xc = f.wavelengthCol || t.columns[0] || '';
+  const _yCols = t.columns.filter(c => c !== _xc);
+  if (_yCols.length > 1) {
+    els.expandSection.style.display = '';
+    els.expandColList.innerHTML = _yCols.map(col => {
+      const id = 'ecb_' + col.replace(/[^a-z0-9]/gi,'_');
+      return `<label class="check-row"><input type="checkbox" class="expand-col-cb" id="${id}" value="${col}" checked /> ${col}</label>`;
+    }).join('');
+  } else {
+    els.expandSection.style.display = 'none';
+    els.expandColList.innerHTML = '';
+  }
 }
 
 function applyActive() {
@@ -1800,6 +1823,37 @@ function applyActive() {
     els.xRangeInfo.textContent='Full range: —';els.useFullRangeBtn.disabled=true;
   }
   updatePreview(t,f.name);refreshFileList();
+}
+
+function expandToTraces() {
+  const f = getActive(); if (!f) return;
+  const t = parseTable(f.text, f.skipRows, f.delimiter, f.hasHeader);
+  const wc = f.wavelengthCol || t.columns[0] || null;
+  const checked = Array.from(
+    els.expandColList.querySelectorAll('.expand-col-cb:checked')
+  ).map(cb => cb.value);
+  if (!checked.length) { setStatus('No columns selected to expand.'); return; }
+  const basename = f.name.replace(/\.csv$/i, '');
+  const newEntries = checked.map(col => ({
+    name:         f.name,
+    text:         f.text,
+    skipRows:     f.skipRows,
+    delimiter:    f.delimiter,
+    hasHeader:    f.hasHeader,
+    wavelengthCol: wc,
+    intensityCol:  col,
+    traceName:    `${basename} · ${col}`,
+    visible:      true,
+    rightAxis:    false,
+    color:        null,
+    xMin:         f.xMin,
+    xMax:         f.xMax,
+  }));
+  const idx = state.activeIndex;
+  state.files.splice(idx, 1, ...newEntries);
+  state.activeIndex = idx;
+  refreshFileList(); loadActive(); plotAll();
+  setStatus(`Expanded into ${newEntries.length} trace(s).`);
 }
 
 function seedGlobalTrim(){
@@ -2483,6 +2537,7 @@ els.dropZone.addEventListener('drop',async e=>{
   e.preventDefault();els.dropZone.classList.remove('dragover');await handleFiles(e.dataTransfer.files);
 });
 
+els.expandBtn.addEventListener('click', expandToTraces);
 els.previewBtn.addEventListener('click',()=>{applyActive();setStatus('Preview updated.');});
 els.applySettingsBtn.addEventListener('click',()=>{applyActive();plotAll();});
 
